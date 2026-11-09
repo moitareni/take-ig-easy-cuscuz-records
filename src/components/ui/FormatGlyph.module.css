@@ -1,0 +1,9 @@
+.glyph {
+  display: inline-block;
+  flex: none;
+  border: 2px solid var(--c-border);
+  border-radius: 3px;
+  background-color: var(--c-amarelo);
+  box-shadow: 0 2px 0 var(--c-border);
+  vertical-align: middle;
+}

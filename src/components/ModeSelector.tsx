@@ -3,6 +3,7 @@ import { Images, Sparkles } from 'lucide-react';
 import { POST_FORMATS, type PostFormat } from '../brand/brand';
 import { switchSingleToCarousel, useCarousel } from '../store/carouselStore';
 import { Button } from './ui/Button';
+import { FormatGlyph } from './ui/FormatGlyph';
 import { Segmented } from './ui/Segmented';
 import styles from './ModeSelector.module.css';
 
@@ -108,9 +109,18 @@ export const ModeSelector: React.FC = () => {
 
             <Segmented
               options={[
-                { value: '3:4', label: POST_FORMATS['3:4'].label },
-                { value: '4:3', label: POST_FORMATS['4:3'].label },
-                { value: '1:1', label: POST_FORMATS['1:1'].label },
+                {
+                  value: '3:4',
+                  label: <><FormatGlyph format="3:4" />{POST_FORMATS['3:4'].label}</>,
+                },
+                {
+                  value: '4:3',
+                  label: <><FormatGlyph format="4:3" />{POST_FORMATS['4:3'].label}</>,
+                },
+                {
+                  value: '1:1',
+                  label: <><FormatGlyph format="1:1" />{POST_FORMATS['1:1'].label}</>,
+                },
               ]}
               value={selectedFormat}
               onChange={(v) => setSelectedFormat(v as PostFormat)}

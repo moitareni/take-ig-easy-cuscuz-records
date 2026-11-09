@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
 import { Download, Images, Redo2, RotateCcw, Sparkles, Undo2 } from 'lucide-react';
+import { POST_FORMATS, type PostFormat } from '../brand/brand';
 import { switchSingleToCarousel, useCarousel } from '../store/carouselStore';
 import { redo, undo, useEditor } from '../store/editorStore';
 import { ConfirmDialog } from './ConfirmDialog';
 import { SlidePickerDialog } from './carousel/SlidePickerDialog';
 import { Button } from './ui/Button';
+import { FormatGlyph } from './ui/FormatGlyph';
 import { IconButton } from './ui/IconButton';
 import styles from './Header.module.css';
 
@@ -23,6 +25,8 @@ export const Header: React.FC<HeaderProps> = ({ onExportCarousel }) => {
   const format = useCarousel((s) => s.format);
   const isExporting = useCarousel((s) => s.isExporting);
   const exportProgress = useCarousel((s) => s.exportProgress);
+  const docFormat = useEditor((s) => s.doc.format) ?? '3:4';
+  const activeFormat: PostFormat = mode === 'carousel' ? format : docFormat;
 
   const handleConfirmReset = () => {
     reset();
@@ -59,7 +63,8 @@ export const Header: React.FC<HeaderProps> = ({ onExportCarousel }) => {
           <div>
             <h1 className={styles.title}>Cuscuz Records</h1>
             <span className={styles.subtitle}>
-              {mode === 'carousel' ? `Carrossel ${format}` : 'Insta Kit 3:4'}
+              <FormatGlyph format={activeFormat} size={13} />
+              {mode === 'carousel' ? 'Carrossel' : 'Insta Kit'} · {POST_FORMATS[activeFormat].label}
             </span>
           </div>
         </div>
