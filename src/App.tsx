@@ -32,6 +32,8 @@ export const App: React.FC = () => {
   const [isExporting, setIsExporting] = useState(false);
 
   const mode = useCarousel((s) => s.mode);
+  const activeSlideIndex = useCarousel((s) => s.activeSlideIndex);
+  const slidesCount = useCarousel((s) => s.slides.length);
   const step = useEditor((s) => s.step);
   const select = useEditor((s) => s.select);
   const showToast = useEditor((s) => s.showToast);
@@ -156,6 +158,16 @@ export const App: React.FC = () => {
         {/* Coluna da Folha de Criação + Tira de Miniaturas (em Modo Carrossel) */}
         <div className={styles.workspaceColumn}>
           <section aria-label="Folha de criação" className={styles.canvasArea}>
+            {mode === 'carousel' && (
+              <span
+                className={styles.slideBadge}
+                data-testid="slide-badge"
+                role="status"
+                aria-live="polite"
+              >
+                Slide {activeSlideIndex + 1} de {slidesCount}
+              </span>
+            )}
             <EditorCanvas ref={canvasRef} />
             {/* Dock lateral: ações do elemento + guias + download único */}
             <aside aria-label="Ferramentas da folha" className={styles.dock}>

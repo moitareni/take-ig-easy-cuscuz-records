@@ -51,6 +51,24 @@
   overflow: hidden;
 }
 
+/* Selo do slide ativo: DOM fora do stage Konva, nunca entra no export. */
+.slideBadge {
+  position: absolute;
+  top: 12px;
+  left: 16px;
+  z-index: 20;
+  pointer-events: none;
+  padding: 5px 12px;
+  border: 2px solid var(--c-border);
+  border-radius: var(--radius-pill);
+  background-color: var(--c-creme);
+  color: var(--c-barro);
+  font-family: var(--font-headline);
+  font-size: 15px;
+  box-shadow: 0 2px 0 var(--c-border);
+  white-space: nowrap;
+}
+
 /* Dock lateral direito: ações do elemento + guias + download */
 .dock {
   position: absolute;
@@ -77,6 +95,12 @@
   .dock {
     right: 8px;
     gap: 8px;
+  }
+  .slideBadge {
+    top: 8px;
+    left: 8px;
+    padding: 4px 9px;
+    font-size: 13px;
   }
 }
 
