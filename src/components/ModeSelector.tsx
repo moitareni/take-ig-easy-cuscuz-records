@@ -8,6 +8,27 @@ import styles from './ModeSelector.module.css';
 
 export { switchSingleToCarousel };
 
+/** Miniaturas decorativas: reconhecimento visual em vez de leitura. */
+const ModePreview: React.FC<{ variant: 'single' | 'carousel' }> = ({ variant }) => (
+  <span className={styles.preview} data-testid="mode-preview" aria-hidden="true">
+    {variant === 'single' ? (
+      <span className={`${styles.previewSheet} ${styles.previewSheetSingle}`}>
+        <span className={styles.previewLine} />
+        <span className={styles.previewLineShort} />
+      </span>
+    ) : (
+      <>
+        <span className={`${styles.previewSheet} ${styles.previewSheetBack}`} />
+        <span className={`${styles.previewSheet} ${styles.previewSheetMid}`} />
+        <span className={`${styles.previewSheet} ${styles.previewSheetFront}`}>
+          <span className={styles.previewLine} />
+          <span className={styles.previewLineShort} />
+        </span>
+      </>
+    )}
+  </span>
+);
+
 export const ModeSelector: React.FC = () => {
   const [choosingFormat, setChoosingFormat] = useState(false);
   const [selectedFormat, setSelectedFormat] = useState<PostFormat>('3:4');
@@ -49,12 +70,15 @@ export const ModeSelector: React.FC = () => {
               className={styles.modeCard}
               onClick={handleSelectSingle}
             >
-              <span className={styles.modeIcon}>
-                <Sparkles size={28} strokeWidth={2.5} />
+              <span className={styles.cardTop}>
+                <span className={styles.modeIcon}>
+                  <Sparkles size={28} strokeWidth={2.5} />
+                </span>
+                <ModePreview variant="single" />
               </span>
               <span className={styles.modeTitle}>Post único</span>
               <span className={styles.modeDesc}>
-                Uma arte caprichada pronta para baixar em PNG.
+                Uma arte caprichada, do tamanho do feed, pronta pra baixar.
               </span>
             </button>
 
@@ -63,12 +87,15 @@ export const ModeSelector: React.FC = () => {
               className={styles.modeCard}
               onClick={() => setChoosingFormat(true)}
             >
-              <span className={styles.modeIcon}>
-                <Images size={28} strokeWidth={2.5} />
+              <span className={styles.cardTop}>
+                <span className={styles.modeIcon}>
+                  <Images size={28} strokeWidth={2.5} />
+                </span>
+                <ModePreview variant="carousel" />
               </span>
               <span className={styles.modeTitle}>Carrossel</span>
               <span className={styles.modeDesc}>
-                Até 10 slides em sequência exportados juntos em ZIP.
+                Vários cards que contam uma história — perfeito pra lançamento de música ou teasers.
               </span>
             </button>
           </div>
@@ -76,7 +103,7 @@ export const ModeSelector: React.FC = () => {
           <div className={styles.formatPicker}>
             <h2 className={styles.formatTitle}>Escolha o formato do carrossel 🎠</h2>
             <p className={styles.formatHint}>
-              Todos os slides seguem a mesma proporção do começo ao fim.
+              Você escolhe o tamanho uma vez e todos os cards saem iguais.
             </p>
 
             <Segmented
