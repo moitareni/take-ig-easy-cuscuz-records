@@ -1,9 +1,11 @@
 import { test, expect } from '@playwright/test';
+import { dismissModeSelector } from './helpers';
 
 test.describe('Cuscuz Records Insta Kit - Fluxo Completo', () => {
   test('cria um post completo e valida as regras da marca', async ({ page }) => {
     // 1. Abre o app
     await page.goto('/');
+    await dismissModeSelector(page);
     await expect(page).toHaveTitle(/Cuscuz Records Insta Kit/);
 
     // 2. Passo 1: Fundo

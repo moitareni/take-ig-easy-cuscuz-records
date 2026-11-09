@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { dismissModeSelector } from './helpers';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 declare global {
@@ -78,8 +79,10 @@ async function nudge(page: Page, key: 'ArrowUp' | 'ArrowDown', times: number) {
 /** Post com 3 textos bem separados na vertical: Texto (topo), Título 1 (meio), Título 2 (base). */
 async function setup(page: Page) {
   await page.goto('/');
+  await dismissModeSelector(page);
   await page.evaluate(() => localStorage.clear());
   await page.reload();
+  await dismissModeSelector(page);
   await page.locator('button[title*="Pronto 1"]').first().click();
   await page.locator('footer button:has-text("Próximo")').click();
   await page.locator('footer button:has-text("Pular (sem enfeites)")').click();

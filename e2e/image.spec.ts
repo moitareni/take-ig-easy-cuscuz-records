@@ -2,12 +2,14 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect, test } from '@playwright/test';
+import { dismissModeSelector } from './helpers';
 
 const FIXTURE = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures', 'foto.png');
 
 test.describe('Etapa 3 - Imagens do usuário', () => {
   test('upload, transformações, limite de 5 e export', async ({ page }) => {
     await page.goto('/');
+    await dismissModeSelector(page);
 
     // Fundo obrigatório → Enfeites
     await page.locator('button[title*="Pronto 1"]').first().click();
@@ -71,6 +73,7 @@ test.describe('Etapa 3 - Imagens do usuário', () => {
 
   test('solta arquivo direto na folha e importa na posição do cursor', async ({ page }) => {
     await page.goto('/');
+    await dismissModeSelector(page);
 
     await page.locator('button[title*="Pronto 1"]').first().click();
     await page.locator('footer button:has-text("Próximo")').click();
@@ -107,6 +110,7 @@ test.describe('Etapa 3 - Imagens do usuário', () => {
     });
 
     await page.goto('/');
+    await dismissModeSelector(page);
     await page.locator('button[title*="Pronto 1"]').first().click();
     await page.locator('footer button:has-text("Próximo")').click();
     await page.locator('footer button:has-text("Pular (sem enfeites)")').click();
