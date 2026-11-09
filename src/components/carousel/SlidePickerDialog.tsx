@@ -68,7 +68,7 @@ export const SlidePickerDialog: React.FC<SlidePickerDialogProps> = ({
       >
         <h3 className={styles.title}>Qual slide você quer manter? 🌽</h3>
         <p className={styles.message}>
-          Escolha um slide do carrossel para continuar como post único ou comece do zero.
+          Escolha um slide pra levar pro post único. O que estiver nele — inclusive as imagens — vai junto.
         </p>
 
         <div className={styles.slideList}>

@@ -8,6 +8,8 @@ export interface ConfirmDialogProps {
   message: string;
   confirmLabel?: string;
   cancelLabel?: string;
+  /** 'danger' para ações destrutivas; 'primary' para trocas sem perda de dados. */
+  confirmVariant?: 'danger' | 'primary';
   onConfirm: () => void;
   onCancel: () => void;
 }
@@ -18,6 +20,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   message,
   confirmLabel = 'Sim, zerar tudo',
   cancelLabel = 'Cancelar',
+  confirmVariant = 'danger',
   onConfirm,
   onCancel,
 }) => {
@@ -37,7 +40,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
           <Button variant="secondary" size="md" onClick={onCancel}>
             {cancelLabel}
           </Button>
-          <Button variant="danger" size="md" onClick={onConfirm}>
+          <Button variant={confirmVariant} size="md" onClick={onConfirm}>
             {confirmLabel}
           </Button>
         </div>

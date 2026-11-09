@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Download, Images, Redo2, RotateCcw, Sparkles, Undo2 } from 'lucide-react';
+import { ArrowLeftRight, Download, Redo2, RotateCcw, Undo2 } from 'lucide-react';
 import { POST_FORMATS, type PostFormat } from '../brand/brand';
 import { switchSingleToCarousel, useCarousel } from '../store/carouselStore';
 import { redo, undo, useEditor } from '../store/editorStore';
@@ -16,6 +16,7 @@ export interface HeaderProps {
 
 export const Header: React.FC<HeaderProps> = ({ onExportCarousel }) => {
   const [showConfirm, setShowConfirm] = useState(false);
+  const [showModeConfirm, setShowModeConfirm] = useState(false);
   const [showSlidePicker, setShowSlidePicker] = useState(false);
 
   const reset = useEditor((s) => s.reset);
@@ -39,11 +40,16 @@ export const Header: React.FC<HeaderProps> = ({ onExportCarousel }) => {
 
   const handleSwitchMode = () => {
     if (mode === 'single') {
-      switchSingleToCarousel();
-      showToast('info', 'Modo Carrossel ativado! 🎠');
+      setShowModeConfirm(true);
     } else if (mode === 'carousel') {
       setShowSlidePicker(true);
     }
+  };
+
+  const handleConfirmModeSwitch = () => {
+    setShowModeConfirm(false);
+    switchSingleToCarousel();
+    showToast('info', 'Modo Carrossel ativado! Seu post virou o primeiro card 🎠');
   };
 
   const exportLabel =
@@ -85,38 +91,33 @@ export const Header: React.FC<HeaderProps> = ({ onExportCarousel }) => {
             />
           </div>
 
-          {mode === 'single' && (
-            <Button
-              variant="secondary"
-              size="sm"
-              icon={<Images size={15} strokeWidth={2.5} />}
+          {mode !== null && (
+            <button
+              type="button"
+              className={styles.modeChip}
               onClick={handleSwitchMode}
+              aria-label={`Trocar de modo (atual: ${mode === 'carousel' ? 'Carrossel' : 'Post único'})`}
+              title="Trocar de modo sem perder o que você já fez"
             >
-              Carrossel
-            </Button>
+              <ArrowLeftRight size={15} strokeWidth={2.5} aria-hidden="true" />
+              <FormatGlyph format={activeFormat} size={13} />
+              <span className={styles.modeChipLabel}>
+                {mode === 'carousel' ? 'Carrossel' : 'Post único'}
+              </span>
+              <span className={styles.modeChipAction}>Trocar</span>
+            </button>
           )}
 
           {mode === 'carousel' && (
-            <>
-              <Button
-                variant="secondary"
-                size="sm"
-                icon={<Sparkles size={15} strokeWidth={2.5} />}
-                onClick={handleSwitchMode}
-              >
-                Post único
-              </Button>
-
-              <Button
-                variant="primary"
-                size="sm"
-                icon={<Download size={15} strokeWidth={2.5} />}
-                disabled={isExporting}
-                onClick={onExportCarousel}
-              >
-                {exportLabel}
-              </Button>
-            </>
+            <Button
+              variant="primary"
+              size="sm"
+              icon={<Download size={15} strokeWidth={2.5} />}
+              disabled={isExporting}
+              onClick={onExportCarousel}
+            >
+              {exportLabel}
+            </Button>
           )}
 
           <Button
@@ -136,6 +137,17 @@ export const Header: React.FC<HeaderProps> = ({ onExportCarousel }) => {
         message="Isso vai limpar o post atual e remover todos os elementos da folha. Deseja continuar?"
         onConfirm={handleConfirmReset}
         onCancel={() => setShowConfirm(false)}
+      />
+
+      <ConfirmDialog
+        isOpen={showModeConfirm}
+        title="Trocar pra Carrossel?"
+        message="Troco pra Carrossel e levo as imagens que você já enviou? Seu post vira o primeiro card 🎠"
+        confirmLabel="Bora, trocar!"
+        cancelLabel="Ficar aqui"
+        confirmVariant="primary"
+        onConfirm={handleConfirmModeSwitch}
+        onCancel={() => setShowModeConfirm(false)}
       />
 
       <SlidePickerDialog
