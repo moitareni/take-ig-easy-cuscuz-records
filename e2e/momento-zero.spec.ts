@@ -1,16 +1,23 @@
 import { expect, test } from '@playwright/test';
-import { carouselSnapshot, dismissModeSelector, openCarousel, openSingle } from './helpers';
+import {
+  carouselSnapshot,
+  chooseMode,
+  dismissModeSelector,
+  openCarousel,
+  openSingle,
+} from './helpers';
 
 const MODE_DIALOG = 'Escolha o modo de criação';
+const MODE_LIST = 'Escolher modo de criação';
 
 test.describe('Momento 0 — escolha de modo (release v.2)', () => {
-  test('M0.1/M0.2: copy de benefício, sem jargão, e miniaturas decorativas', async ({ page }) => {
+  test('M0.1/M0.2: textos das cartas, sem jargão, e miniaturas decorativas', async ({ page }) => {
     await page.goto('/');
     const dialog = page.getByRole('dialog', { name: MODE_DIALOG });
     await dialog.waitFor({ state: 'visible' });
 
-    await expect(dialog.getByText('do tamanho do feed')).toBeVisible();
-    await expect(dialog.getByText('Vários cards que contam uma história')).toBeVisible();
+    await expect(dialog.getByText('Arte isolada, ideal para flyers')).toBeVisible();
+    await expect(dialog.getByText('Várias artes que contam uma história')).toBeVisible();
     await expect(dialog).not.toContainText('ZIP');
     await expect(dialog).not.toContainText('PNG');
     await expect(dialog).toHaveAttribute('aria-modal', 'true');
@@ -64,9 +71,14 @@ test.describe('Momento 0 — escolha de modo (release v.2)', () => {
     await page.locator('button[title*="Pronto 1"]').first().click();
     await expect(page.locator('footer button:has-text("Próximo")')).toBeEnabled();
 
-    const chip = page.getByRole('button', { name: /Trocar de modo/ });
-    await expect(chip).toBeVisible();
-    await chip.click();
+    const trigger = page.getByTestId('mode-dropdown-trigger');
+    await expect(trigger).toBeVisible();
+    await trigger.click();
+
+    const list = page.getByRole('listbox', { name: MODE_LIST });
+    await expect(list).toBeVisible();
+    await expect(page.getByRole('option', { name: /Post único/ })).toHaveAttribute('aria-selected', 'true');
+    await page.getByRole('option', { name: /Carrossel/ }).click();
 
     const confirm = page.getByRole('dialog').filter({ hasText: 'Trocar pra Carrossel?' });
     await expect(confirm).toContainText('Troco pra Carrossel e levo as imagens que você já enviou?');
@@ -82,7 +94,7 @@ test.describe('Momento 0 — escolha de modo (release v.2)', () => {
 
   test('M0.3: carrossel → post único reusa o seletor de slide', async ({ page }) => {
     await openCarousel(page);
-    await page.getByRole('button', { name: /Trocar de modo/ }).click();
+    await chooseMode(page, 'single');
 
     const picker = page.getByRole('dialog', { name: 'Escolher slide para Post Único' });
     await expect(picker).toBeVisible();
@@ -95,9 +107,8 @@ test.describe('Momento 0 — escolha de modo (release v.2)', () => {
 
   test('M0.3: trocas de modo nunca devolvem ao seletor nem zera o modo', async ({ page }) => {
     await openSingle(page);
-    const chip = page.getByRole('button', { name: /Trocar de modo/ });
 
-    await chip.click();
+    await chooseMode(page, 'carousel');
     await page
       .getByRole('dialog')
       .filter({ hasText: 'Trocar pra Carrossel?' })
@@ -105,7 +116,7 @@ test.describe('Momento 0 — escolha de modo (release v.2)', () => {
       .click();
     expect((await carouselSnapshot(page))?.mode).toBe('carousel');
 
-    await chip.click();
+    await chooseMode(page, 'single');
     await page
       .getByRole('dialog', { name: 'Escolher slide para Post Único' })
       .getByRole('button', { name: 'Confirmar' })
@@ -115,7 +126,35 @@ test.describe('Momento 0 — escolha de modo (release v.2)', () => {
     await expect(page.getByRole('dialog', { name: MODE_DIALOG })).toHaveCount(0);
   });
 
-  test('M0.2/M0.3: miniaturas cabem na carta e chip tem alvo de toque ≥ 24px', async ({ page }) => {
+  test('M0.3: dropdown com teclado, tooltip nativo e clique fora', async ({ page }) => {
+    await openSingle(page);
+    const trigger = page.getByTestId('mode-dropdown-trigger');
+    await expect(trigger).toContainText('modo');
+    await expect(trigger).toHaveAttribute('title', /Escolha entre Post único/);
+    await expect(trigger).toHaveAttribute('aria-haspopup', 'listbox');
+    await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+
+    await trigger.click();
+    await expect(trigger).toHaveAttribute('aria-expanded', 'true');
+    const list = page.getByRole('listbox', { name: MODE_LIST });
+    await expect(list).toBeVisible();
+    await expect(page.getByRole('option', { name: /Post único/ })).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByRole('option', { name: /Carrossel/ })).toHaveAttribute('aria-selected', 'false');
+
+    await page.keyboard.press('ArrowDown');
+    await expect(page.getByRole('option', { name: /Carrossel/ })).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(list).toHaveCount(0);
+    await expect(trigger).toBeFocused();
+
+    await trigger.click();
+    await expect(list).toBeVisible();
+    await page.locator('h1').first().click();
+    await expect(list).toHaveCount(0);
+    expect((await carouselSnapshot(page))?.mode).toBe('single');
+  });
+
+  test('M0.2/M0.3: miniaturas cabem na carta e gatilho tem alvo de toque ≥ 24px', async ({ page }) => {
     await page.goto('/');
     const dialog = page.getByRole('dialog', { name: MODE_DIALOG });
     await dialog.waitFor({ state: 'visible' });
@@ -126,8 +165,8 @@ test.describe('Momento 0 — escolha de modo (release v.2)', () => {
     expect(previewBox!.x + previewBox!.width).toBeLessThanOrEqual(cardBox!.x + cardBox!.width + 1);
 
     await dismissModeSelector(page, 'single');
-    const chipBox = await page.getByRole('button', { name: /Trocar de modo/ }).boundingBox();
-    expect(chipBox!.height).toBeGreaterThanOrEqual(24);
+    const triggerBox = await page.getByTestId('mode-dropdown-trigger').boundingBox();
+    expect(triggerBox!.height).toBeGreaterThanOrEqual(24);
   });
 
   test('M0: respeita prefers-reduced-motion', async ({ page }) => {
@@ -139,17 +178,16 @@ test.describe('Momento 0 — escolha de modo (release v.2)', () => {
     expect(parseFloat(duration)).toBeLessThan(0.01);
   });
 
-  test('M0: glifos decorativos fora da árvore e chip rotulado', async ({ page }) => {
+  test('M0: glifos decorativos fora da árvore e gatilho rotulado', async ({ page }) => {
     await page.goto('/');
     const dialog = page.getByRole('dialog', { name: MODE_DIALOG });
     await dialog.getByRole('button', { name: /Carrossel/ }).click();
     await expect(dialog.getByTestId('format-glyph').first()).toHaveAttribute('aria-hidden', 'true');
     await dialog.getByRole('button', { name: 'Bora criar carrossel!' }).click();
 
-    await expect(page.getByRole('button', { name: /Trocar de modo/ })).toHaveAttribute(
-      'title',
-      /Trocar de modo/,
-    );
+    const trigger = page.getByTestId('mode-dropdown-trigger');
+    await expect(trigger).toHaveAttribute('title', /Escolha entre Post único/);
+    await expect(trigger).toHaveAttribute('aria-haspopup', 'listbox');
     await expect(page.getByTestId('slide-badge')).toHaveAttribute('aria-live', 'polite');
   });
 });

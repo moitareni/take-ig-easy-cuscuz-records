@@ -79,7 +79,7 @@ export const ModeSelector: React.FC = () => {
               </span>
               <span className={styles.modeTitle}>Post único</span>
               <span className={styles.modeDesc}>
-                Uma arte caprichada, do tamanho do feed, pronta pra baixar.
+                Arte isolada, ideal para flyers, anuncios e imagens de capa.
               </span>
             </button>
 
@@ -96,7 +96,7 @@ export const ModeSelector: React.FC = () => {
               </span>
               <span className={styles.modeTitle}>Carrossel</span>
               <span className={styles.modeDesc}>
-                Vários cards que contam uma história — perfeito pra lançamento de música ou teasers.
+                Várias artes que contam uma história, ideal para quadros da página e montagens de fotos.
               </span>
             </button>
           </div>

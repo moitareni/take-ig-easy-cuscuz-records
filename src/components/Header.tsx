@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { ArrowLeftRight, Download, Redo2, RotateCcw, Undo2 } from 'lucide-react';
+import { Download, Redo2, RotateCcw, Undo2 } from 'lucide-react';
 import { POST_FORMATS, type PostFormat } from '../brand/brand';
 import { switchSingleToCarousel, useCarousel } from '../store/carouselStore';
 import { redo, undo, useEditor } from '../store/editorStore';
 import { ConfirmDialog } from './ConfirmDialog';
+import { ModeDropdown, type ModeValue } from './ModeDropdown';
 import { SlidePickerDialog } from './carousel/SlidePickerDialog';
 import { Button } from './ui/Button';
 import { FormatGlyph } from './ui/FormatGlyph';
@@ -38,10 +39,11 @@ export const Header: React.FC<HeaderProps> = ({ onExportCarousel }) => {
     showToast('info', 'Tudo limpinho para um novo post ✨');
   };
 
-  const handleSwitchMode = () => {
-    if (mode === 'single') {
+  const handleModeChange = (next: ModeValue) => {
+    if (next === mode) return;
+    if (next === 'carousel') {
       setShowModeConfirm(true);
-    } else if (mode === 'carousel') {
+    } else {
       setShowSlidePicker(true);
     }
   };
@@ -92,20 +94,11 @@ export const Header: React.FC<HeaderProps> = ({ onExportCarousel }) => {
           </div>
 
           {mode !== null && (
-            <button
-              type="button"
-              className={styles.modeChip}
-              onClick={handleSwitchMode}
-              aria-label={`Trocar de modo (atual: ${mode === 'carousel' ? 'Carrossel' : 'Post único'})`}
-              title="Trocar de modo sem perder o que você já fez"
-            >
-              <ArrowLeftRight size={15} strokeWidth={2.5} aria-hidden="true" />
-              <FormatGlyph format={activeFormat} size={13} />
-              <span className={styles.modeChipLabel}>
-                {mode === 'carousel' ? 'Carrossel' : 'Post único'}
-              </span>
-              <span className={styles.modeChipAction}>Trocar</span>
-            </button>
+            <ModeDropdown
+              value={mode}
+              format={activeFormat}
+              onChange={handleModeChange}
+            />
           )}
 
           {mode === 'carousel' && (

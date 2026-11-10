@@ -63,6 +63,14 @@ export async function openCarousel(page: Page, format: CarouselFormat = '3:4'): 
   await expect(dialog).toBeHidden();
 }
 
+/** Abre o dropdown de modo e escolhe uma opção; não confirma os diálogos seguintes. */
+export async function chooseMode(page: Page, target: EditorMode): Promise<void> {
+  await page.getByTestId('mode-dropdown-trigger').click();
+  await page
+    .getByRole('option', { name: target === 'single' ? /Post único/ : /Carrossel/ })
+    .click();
+}
+
 /** Estado bruto do store de carrossel exposto em window no boot. */
 export async function carouselSnapshot(page: Page): Promise<CarouselSnapshot | null> {
   return page.evaluate(() => {
