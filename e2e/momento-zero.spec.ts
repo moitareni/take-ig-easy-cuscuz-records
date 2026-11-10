@@ -16,7 +16,12 @@ test.describe('Momento 0 — escolha de modo (release v.2)', () => {
     const dialog = page.getByRole('dialog', { name: MODE_DIALOG });
     await dialog.waitFor({ state: 'visible' });
 
-    // O texto saiu das cartas (não visível) e mora no balão nativo do (?).
+    // Sem jargão: nada de ZIP/PNG na tela inteira.
+    await expect(dialog).not.toContainText('ZIP');
+    await expect(dialog).not.toContainText('PNG');
+    await expect(dialog).toHaveAttribute('aria-modal', 'true');
+
+    // O texto saiu das cartas (escondido, sr-only) e mora no balão instantâneo do (?).
     const single = dialog.getByRole('button', { name: /Post único/ });
     const carousel = dialog.getByRole('button', { name: /Carrossel/ });
     await expect(single).toBeVisible();
@@ -26,26 +31,29 @@ test.describe('Momento 0 — escolha de modo (release v.2)', () => {
     });
     expect(singleDescHidden).toBe(true);
     await expect(single.getByTestId('mode-help-single')).toHaveAttribute(
-      'title',
+      'data-tip',
       'Arte isolada, ideal para flyers, anuncios e imagens de capa.',
     );
     await expect(carousel.getByTestId('mode-help-carousel')).toHaveAttribute(
-      'title',
+      'data-tip',
       'Várias artes que contam uma história, ideal para quadros da página e montagens de fotos.',
     );
+
+    // As miniaturas de folha sairam das cartas por pedido do usuário.
+    await expect(dialog.getByTestId('mode-preview')).toHaveCount(0);
+
+    // O balão aparece sem espera no hover (opacidade 1 assim que o mouse encosta).
+    await carousel.getByTestId('mode-help-carousel').hover();
+    await expect(async () => {
+      const tipOpacity = await carousel
+        .getByTestId('mode-help-carousel')
+        .evaluate((el) => getComputedStyle(el, '::after').opacity);
+      expect(parseFloat(tipOpacity)).toBe(1);
+    }).toPass();
 
     // Clicar no (?) não escolhe o modo — o seletor continua aberto.
     await single.getByTestId('mode-help-single').click();
     await expect(dialog).toBeVisible();
-
-    await expect(dialog).not.toContainText('ZIP');
-    await expect(dialog).not.toContainText('PNG');
-    await expect(dialog).toHaveAttribute('aria-modal', 'true');
-
-    const previews = dialog.getByTestId('mode-preview');
-    await expect(previews).toHaveCount(2);
-    await expect(previews.first()).toHaveAttribute('aria-hidden', 'true');
-    await expect(previews.last()).toHaveAttribute('aria-hidden', 'true');
   });
 
   test('M0.4: segunda tela com glifos na proporção certa e botão Voltar', async ({ page }) => {
@@ -174,15 +182,13 @@ test.describe('Momento 0 — escolha de modo (release v.2)', () => {
     expect((await carouselSnapshot(page))?.mode).toBe('single');
   });
 
-  test('M0.2/M0.3: miniaturas cabem na carta e gatilho tem alvo de toque ≥ 24px', async ({ page }) => {
+  test('M0.2/M0.3: balão não vaza da tela e gatilho tem alvo de toque ≥ 24px', async ({ page }) => {
     await page.goto('/');
     const dialog = page.getByRole('dialog', { name: MODE_DIALOG });
     await dialog.waitFor({ state: 'visible' });
 
-    const cardBox = await dialog.getByRole('button', { name: /Post único/ }).boundingBox();
-    const previewBox = await dialog.getByTestId('mode-preview').first().boundingBox();
+    const cardBox = await dialog.getByRole('button', { name: /Carrossel/ }).boundingBox();
     expect(cardBox!.width).toBeGreaterThan(0);
-    expect(previewBox!.x + previewBox!.width).toBeLessThanOrEqual(cardBox!.x + cardBox!.width + 1);
 
     await dismissModeSelector(page, 'single');
     const triggerBox = await page.getByTestId('mode-dropdown-trigger').boundingBox();

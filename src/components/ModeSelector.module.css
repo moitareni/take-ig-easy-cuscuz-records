@@ -99,15 +99,7 @@
   flex: none;
 }
 
-.cardTop {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  width: 100%;
-}
-
-/* Selo (?): balão nativo do navegador (title), clicar nele não escolhe o modo. */
+/* Selo (?): balão próprio, instantâneo no hover (title nativo demora ~1s a abrir). */
 .helpDot {
   position: absolute;
   top: 10px;
@@ -129,68 +121,61 @@
   transition: transform var(--duration-fast) var(--ease-bounce);
 }
 
-.helpDot:hover {
+/* O balão da carta da esquerda precisa passar por cima da carta vizinha. */
+.helpDot:hover,
+.helpDot:focus-visible {
+  z-index: 40;
   background-color: var(--c-amarelo);
   color: var(--c-preto);
   transform: scale(1.1);
 }
 
-/* Miniaturas: uma folha (post único) vs. três folhas encadeadas (carrossel). */
-.preview {
-  position: relative;
-  display: inline-block;
-  width: 76px;
-  height: 48px;
-  flex: none;
-}
-
-.previewSheet {
+.helpDot::before {
+  content: '';
   position: absolute;
-  top: 6px;
-  width: 24px;
-  height: 32px;
+  top: calc(100% + 5px);
+  right: 9px;
+  width: 10px;
+  height: 10px;
+  z-index: 41;
+  background-color: var(--c-surface-card);
+  border-right: 2px solid var(--c-border);
+  border-bottom: 2px solid var(--c-border);
+  transform: rotate(45deg);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--duration-fast) ease;
+}
+
+.helpDot::after {
+  content: attr(data-tip);
+  position: absolute;
+  top: calc(100% + 14px);
+  right: -4px;
+  z-index: 41;
+  width: max-content;
+  max-width: 260px;
+  padding: 8px 12px;
   border: 2px solid var(--c-border);
-  border-radius: 3px;
-  background-color: var(--c-creme);
-  box-shadow: 0 2px 0 #0b0500;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  padding: 4px 3px;
+  border-radius: var(--radius-sm);
+  background-color: var(--c-surface-card);
+  box-shadow: var(--shadow-md);
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.35;
+  color: var(--c-text-main);
+  text-align: left;
+  white-space: normal;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--duration-fast) ease;
 }
 
-.previewSheetSingle {
-  left: 26px;
-}
-
-.previewSheetBack {
-  left: 4px;
-  opacity: 0.5;
-}
-
-.previewSheetMid {
-  left: 18px;
-  opacity: 0.75;
-}
-
-.previewSheetFront {
-  left: 32px;
-}
-
-.previewLine,
-.previewLineShort {
-  display: block;
-  height: 3px;
-  border-radius: 2px;
-  background-color: var(--c-barro);
-}
-
-.previewLine {
-  width: 100%;
-}
-
-.previewLineShort {
-  width: 60%;
+.helpDot:hover::before,
+.helpDot:hover::after,
+.helpDot:focus-visible::before,
+.helpDot:focus-visible::after {
+  opacity: 1;
 }
 
 .modeTitle {

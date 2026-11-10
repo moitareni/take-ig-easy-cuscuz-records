@@ -16,27 +16,6 @@ const CAROUSEL_DESC =
 /** O texto de apoio vive só no (?) do canto; na árvore fica escondido p/ leitor de tela. */
 const descId = (variant: 'single' | 'carousel', id: string) => `${id}-${variant}-desc`;
 
-/** Miniaturas decorativas: reconhecimento visual em vez de leitura. */
-const ModePreview: React.FC<{ variant: 'single' | 'carousel' }> = ({ variant }) => (
-  <span className={styles.preview} data-testid="mode-preview" aria-hidden="true">
-    {variant === 'single' ? (
-      <span className={`${styles.previewSheet} ${styles.previewSheetSingle}`}>
-        <span className={styles.previewLine} />
-        <span className={styles.previewLineShort} />
-      </span>
-    ) : (
-      <>
-        <span className={`${styles.previewSheet} ${styles.previewSheetBack}`} />
-        <span className={`${styles.previewSheet} ${styles.previewSheetMid}`} />
-        <span className={`${styles.previewSheet} ${styles.previewSheetFront}`}>
-          <span className={styles.previewLine} />
-          <span className={styles.previewLineShort} />
-        </span>
-      </>
-    )}
-  </span>
-);
-
 export const ModeSelector: React.FC = () => {
   const [choosingFormat, setChoosingFormat] = useState(false);
   const [selectedFormat, setSelectedFormat] = useState<PostFormat>('3:4');
@@ -82,17 +61,15 @@ export const ModeSelector: React.FC = () => {
             >
               <span
                 className={styles.helpDot}
-                title={SINGLE_DESC}
+                data-tip={SINGLE_DESC}
+                aria-hidden="true"
                 onClick={(event) => event.stopPropagation()}
                 data-testid="mode-help-single"
               >
                 ?
               </span>
-              <span className={styles.cardTop}>
-                <span className={styles.modeIcon}>
-                  <Sparkles size={28} strokeWidth={2.5} />
-                </span>
-                <ModePreview variant="single" />
+              <span className={styles.modeIcon}>
+                <Sparkles size={28} strokeWidth={2.5} />
               </span>
               <span className={styles.modeTitle}>Post único</span>
               <span className={styles.modeDesc} id={descId('single', listId)}>
@@ -108,17 +85,15 @@ export const ModeSelector: React.FC = () => {
             >
               <span
                 className={styles.helpDot}
-                title={CAROUSEL_DESC}
+                data-tip={CAROUSEL_DESC}
+                aria-hidden="true"
                 onClick={(event) => event.stopPropagation()}
                 data-testid="mode-help-carousel"
               >
                 ?
               </span>
-              <span className={styles.cardTop}>
-                <span className={styles.modeIcon}>
-                  <Images size={28} strokeWidth={2.5} />
-                </span>
-                <ModePreview variant="carousel" />
+              <span className={styles.modeIcon}>
+                <Images size={28} strokeWidth={2.5} />
               </span>
               <span className={styles.modeTitle}>Carrossel</span>
               <span className={styles.modeDesc} id={descId('carousel', listId)}>
