@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useId, useState } from 'react';
 import { Images, Sparkles } from 'lucide-react';
 import { POST_FORMATS, type PostFormat } from '../brand/brand';
 import { switchSingleToCarousel, useCarousel } from '../store/carouselStore';
@@ -8,6 +8,13 @@ import { Segmented } from './ui/Segmented';
 import styles from './ModeSelector.module.css';
 
 export { switchSingleToCarousel };
+
+const SINGLE_DESC = 'Arte isolada, ideal para flyers, anuncios e imagens de capa.';
+const CAROUSEL_DESC =
+  'Várias artes que contam uma história, ideal para quadros da página e montagens de fotos.';
+
+/** O texto de apoio vive só no (?) do canto; na árvore fica escondido p/ leitor de tela. */
+const descId = (variant: 'single' | 'carousel', id: string) => `${id}-${variant}-desc`;
 
 /** Miniaturas decorativas: reconhecimento visual em vez de leitura. */
 const ModePreview: React.FC<{ variant: 'single' | 'carousel' }> = ({ variant }) => (
@@ -33,6 +40,7 @@ const ModePreview: React.FC<{ variant: 'single' | 'carousel' }> = ({ variant }) 
 export const ModeSelector: React.FC = () => {
   const [choosingFormat, setChoosingFormat] = useState(false);
   const [selectedFormat, setSelectedFormat] = useState<PostFormat>('3:4');
+  const listId = useId();
 
   const setMode = useCarousel((s) => s.setMode);
   const setFormat = useCarousel((s) => s.setFormat);
@@ -69,8 +77,17 @@ export const ModeSelector: React.FC = () => {
             <button
               type="button"
               className={styles.modeCard}
+              aria-describedby={descId('single', listId)}
               onClick={handleSelectSingle}
             >
+              <span
+                className={styles.helpDot}
+                title={SINGLE_DESC}
+                onClick={(event) => event.stopPropagation()}
+                data-testid="mode-help-single"
+              >
+                ?
+              </span>
               <span className={styles.cardTop}>
                 <span className={styles.modeIcon}>
                   <Sparkles size={28} strokeWidth={2.5} />
@@ -78,16 +95,25 @@ export const ModeSelector: React.FC = () => {
                 <ModePreview variant="single" />
               </span>
               <span className={styles.modeTitle}>Post único</span>
-              <span className={styles.modeDesc}>
-                Arte isolada, ideal para flyers, anuncios e imagens de capa.
+              <span className={styles.modeDesc} id={descId('single', listId)}>
+                {SINGLE_DESC}
               </span>
             </button>
 
             <button
               type="button"
               className={styles.modeCard}
+              aria-describedby={descId('carousel', listId)}
               onClick={() => setChoosingFormat(true)}
             >
+              <span
+                className={styles.helpDot}
+                title={CAROUSEL_DESC}
+                onClick={(event) => event.stopPropagation()}
+                data-testid="mode-help-carousel"
+              >
+                ?
+              </span>
               <span className={styles.cardTop}>
                 <span className={styles.modeIcon}>
                   <Images size={28} strokeWidth={2.5} />
@@ -95,8 +121,8 @@ export const ModeSelector: React.FC = () => {
                 <ModePreview variant="carousel" />
               </span>
               <span className={styles.modeTitle}>Carrossel</span>
-              <span className={styles.modeDesc}>
-                Várias artes que contam uma história, ideal para quadros da página e montagens de fotos.
+              <span className={styles.modeDesc} id={descId('carousel', listId)}>
+                {CAROUSEL_DESC}
               </span>
             </button>
           </div>

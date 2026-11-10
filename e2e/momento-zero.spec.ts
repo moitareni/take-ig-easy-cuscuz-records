@@ -11,13 +11,33 @@ const MODE_DIALOG = 'Escolha o modo de criação';
 const MODE_LIST = 'Escolher modo de criação';
 
 test.describe('Momento 0 — escolha de modo (release v.2)', () => {
-  test('M0.1/M0.2: textos das cartas, sem jargão, e miniaturas decorativas', async ({ page }) => {
+  test('M0.1/M0.2: texto de apoio vive no (?) do canto, carta limpa e centralizada', async ({ page }) => {
     await page.goto('/');
     const dialog = page.getByRole('dialog', { name: MODE_DIALOG });
     await dialog.waitFor({ state: 'visible' });
 
-    await expect(dialog.getByText('Arte isolada, ideal para flyers')).toBeVisible();
-    await expect(dialog.getByText('Várias artes que contam uma história')).toBeVisible();
+    // O texto saiu das cartas (não visível) e mora no balão nativo do (?).
+    const single = dialog.getByRole('button', { name: /Post único/ });
+    const carousel = dialog.getByRole('button', { name: /Carrossel/ });
+    await expect(single).toBeVisible();
+    const singleDescHidden = await single.locator('[class*="modeDesc"]').evaluate((el) => {
+      const style = getComputedStyle(el);
+      return Number.parseInt(style.width, 10) <= 1 && style.clipPath !== 'none';
+    });
+    expect(singleDescHidden).toBe(true);
+    await expect(single.getByTestId('mode-help-single')).toHaveAttribute(
+      'title',
+      'Arte isolada, ideal para flyers, anuncios e imagens de capa.',
+    );
+    await expect(carousel.getByTestId('mode-help-carousel')).toHaveAttribute(
+      'title',
+      'Várias artes que contam uma história, ideal para quadros da página e montagens de fotos.',
+    );
+
+    // Clicar no (?) não escolhe o modo — o seletor continua aberto.
+    await single.getByTestId('mode-help-single').click();
+    await expect(dialog).toBeVisible();
+
     await expect(dialog).not.toContainText('ZIP');
     await expect(dialog).not.toContainText('PNG');
     await expect(dialog).toHaveAttribute('aria-modal', 'true');
