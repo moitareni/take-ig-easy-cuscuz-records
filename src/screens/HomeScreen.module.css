@@ -416,13 +416,6 @@
   color: var(--c-text-main);
 }
 
-.emptyText {
-  max-width: 460px;
-  font-family: var(--font-body);
-  font-size: 17px;
-  color: var(--c-text-muted);
-}
-
 .emptyActions {
   display: flex;
   gap: 12px;

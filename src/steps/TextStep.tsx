@@ -12,6 +12,7 @@ import { FONT_SIZE_MIN, HEADING_FONT_SIZE_MAX } from '../brand/brand';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { ColorSwatches } from '../components/ui/ColorSwatches';
+import { HelpTip } from '../components/ui/HelpTip';
 import { ElementListRow } from '../components/ui/ElementListRow';
 import { IconButton } from '../components/ui/IconButton';
 import { Segmented } from '../components/ui/Segmented';
@@ -40,11 +41,13 @@ export const TextStep: React.FC = () => {
 
   return (
     <div className={styles.container}>
-      <div className={styles.header}>
+      <div className={styles.titleRow}>
         <h2 className={styles.title}>4. Escreve aí 📝</h2>
-        <p className={styles.description}>
-          Adicione títulos, textos ou caixas de destaque com as fontes e cores da identidade visual.
-        </p>
+        <HelpTip
+          label="Sobre esta etapa"
+          align="end"
+          tip="Adicione títulos, textos ou caixas de destaque com as fontes e cores da identidade visual."
+        />
       </div>
 
       {/* Botões de Adicionar Novos Textos */}

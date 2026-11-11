@@ -506,12 +506,13 @@ export const ImageStep: React.FC = () => {
         </button>
       )}
 
-      <div className={styles.header}>
+      <div className={styles.titleRow}>
         <h2 className={styles.title}>3. Sua imagem 🖼️</h2>
-        <p className={styles.description}>
-          Esta etapa é opcional. Traga uma foto do seu PC ou arraste ela pra folha — você move,
-          gira e redimensiona como os outros elementos.
-        </p>
+        <HelpTip
+          label="Sobre esta etapa"
+          align="end"
+          tip="Esta etapa é opcional. Traga uma foto do seu PC ou arraste ela pra folha — você move, gira e redimensiona como os outros elementos."
+        />
       </div>
 
       {/* Dropzone: clique abre o seletor; soltar arquivos adiciona direto */}

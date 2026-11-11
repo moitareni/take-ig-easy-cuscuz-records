@@ -17,6 +17,9 @@
 > - **Header/Dock**: logo da Cuscuz e botão "Começar do zero" removidos do Header; selo de autosave ao lado do título; `ModeDropdown` vem **antes** de `Exportar`/`Exportação`; Desfazer/Refazer ficam na base do dock direito.
 > - **Criação unificada na home**: os antigos pares de botões ("Carrossel" + "Post único" no header, "Criar carrossel" + "Criar post único" no quadro vazio) viraram **um único `+ Criar novo`** (`components/CreateDraftDropdown.tsx`, `data-testid="create-draft-trigger"`), que abre as mesmas duas opções do `ModeDropdown` do editor (mesmos ícones `Sparkles`/`Images` e dicas). O gatilho fica no header quando há rascunhos e no quadro central quando a lista está vazia (critério 2 do Requisito 13).
 > - **Passo 4 · Editar Texto**: o botão de criação virou **"+ Texto com borda"** (era "Destaque (com efeito)"); o rótulo **"Borda de Destaque"** virou **"Caixa de destaque"**; o botão **"Efeito da Marca"** saiu do painel; "Cor da Marca" (2 colunas) e "Caixa de destaque" (opções empilhadas) ficam lado a lado, com mais respiro vertical no card (`.editStack`). Ver `AGENTS.md` §2.5 e §2.15.
+> - **Estado vazio da home**: sem o parágrafo explicativo — só o título e o `+ Criar novo`.
+> - **Passo 2 · Enfeites**: o card "Opções de {enfeite}" e o bloco "Encaixar nos cantos" **saíram** (e `placeDecoration` do store); posição/espelho/exclusão ficam no dock e na lista "Na folha".
+> - **Títulos das etapas**: a descrição de cada aba virou um balão `(?)` **fixo na borda direita do painel** (`HelpTip`, `align="end"`); não existe mais o `<p>` abaixo do título.
 > - **Renomear sem salto**: título editável como pílula creme (sem borda/outline, auto-dimensionada, máx. 80 caracteres, texto selecionado ao focar) no Header **e** no card da home (clique no título ou no lápis "Renomear"); o card ganhou o botão direto "Exportar".
 > - **Seleção** de texto/realces em amarelo da marca (`--c-amarelo`); scrollbars finas e arredondadas em todos os navegadores (`FirefoxRoundScrollbar`).
 > - **Logo**: presets de posição seguem `layoutGuides.margin` (ou 0 com guias/margens desativadas).
@@ -118,7 +121,7 @@ O **Cuscuz Records Insta Kit** é uma aplicação web estática (React 18 + Type
 2. THE Editor SHALL disponibilizar os seguintes Grafismos: `deco-chain`, `deco-esqueleto`, `deco-mp3player` e `deco-papel-divisao` (blend mode `divide`).
 3. THE Editor SHALL disponibilizar a Moldura `deco-janela` como opção adicional na Etapa 1.
 4. WHEN o usuário adiciona um Enfeite ou Grafismo, THE Editor SHALL inserir o elemento no Doc como `DecorationEl` e renderizá-lo na Folha com posicionamento inicial centrado.
-5. THE Editor SHALL suportar posicionamento rápido por canto (TL, TR, BL, BR), reposicionando o Enfeite e aplicando auto-flip conforme o `DECORATION_ANCHORS` definido em `src/brand/brand.ts`, de forma que o elemento "abrace" o canto escolhido.
+5. ~~THE Editor SHALL suportar posicionamento rápido por canto (TL, TR, BL, BR)~~ **Removido (11/11/2026)**: os botões "Encaixar nos cantos" e "Centralizar na folha" saíram do painel (e `placeDecoration` do store). O posicionamento é feito arrastando na folha ou pelos alinhamentos do dock direito; `DECORATION_ANCHORS` permanece em `brand.ts` como contrato de dados.
 6. THE Editor SHALL permitir que o usuário transforme cada Enfeite individualmente: arrasto livre pela Folha, redimensionamento proporcional, rotação, flip horizontal (↔) e flip vertical (↕).
 7. THE Editor SHALL suportar ordenação de camadas por elemento: trazer para frente e enviar para trás.
 8. THE Editor SHALL permitir que o usuário remova qualquer Enfeite ou Grafismo individualmente, com suporte a Undo/Redo.

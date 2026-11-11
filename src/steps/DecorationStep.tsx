@@ -1,28 +1,21 @@
 import React from 'react';
-import { FlipHorizontal, FlipVertical, Trash2 } from 'lucide-react';
 import { decorationsOf, getDecoration } from '../assets';
-import { Button } from '../components/ui/Button';
-import { Card } from '../components/ui/Card';
 import { ElementListRow } from '../components/ui/ElementListRow';
-import { IconButton } from '../components/ui/IconButton';
+import { HelpTip } from '../components/ui/HelpTip';
 import { ThumbGrid } from '../components/ui/ThumbGrid';
 import { announceCanvasActivity } from '../lib/useImage';
 import { useEditor, useSelected } from '../store/editorStore';
-import { POST_H, POST_W } from '../brand/brand';
 import type { DecorationEl } from '../types';
 import styles from './StepPanel.module.css';
 
 export const DecorationStep: React.FC = () => {
   const addDecoration = useEditor((s) => s.addDecoration);
-  const placeDecoration = useEditor((s) => s.placeDecoration);
-  const updateElement = useEditor((s) => s.updateElement);
   const removeElement = useEditor((s) => s.removeElement);
   const select = useEditor((s) => s.select);
   const elements = useEditor((s) => s.doc.elements);
 
   const selected = useSelected();
   const selectedDeco = selected && selected.kind === 'decoration' ? (selected as DecorationEl) : null;
-  const selectedAsset = selectedDeco ? getDecoration(selectedDeco.assetId) : null;
 
   const currentDecorations = elements.filter((e): e is DecorationEl => e.kind === 'decoration');
   const enfeites = decorationsOf('enfeite');
@@ -41,11 +34,13 @@ export const DecorationStep: React.FC = () => {
 
   return (
     <div className={styles.container}>
-      <div className={styles.header}>
+      <div className={styles.titleRow}>
         <h2 className={styles.title}>2. Enfeita aí! ✨</h2>
-        <p className={styles.description}>
-          Esta etapa é opcional. Toque em um enfeite ou grafismo para adicionar à folha e movimente livremente.
-        </p>
+        <HelpTip
+          label="Sobre esta etapa"
+          align="end"
+          tip="Esta etapa é opcional. Toque em um enfeite ou grafismo para adicionar à folha e movimente livremente."
+        />
       </div>
 
       <div className={styles.section}>
@@ -78,95 +73,6 @@ export const DecorationStep: React.FC = () => {
             onSelect={handleAddDecoration}
           />
         </div>
-      )}
-
-      {/* Opções para o enfeite atualmente selecionado */}
-      {selectedDeco && (
-        <Card
-          title={selectedAsset?.label ? `Opções de ${selectedAsset.label}` : 'Opções do Enfeite'}
-          subtitle={
-            selectedAsset?.fullSheet
-              ? 'Cobre a folha inteira 1080×1440'
-              : 'Encaixe nos cantos com espelhamento automático'
-          }
-        >
-          {selectedAsset?.fullSheet ? (
-            <Button
-              variant="secondary"
-              size="sm"
-              fullWidth
-              onClick={() =>
-                updateElement(selectedDeco.id, {
-                  x: POST_W / 2,
-                  y: POST_H / 2,
-                  rotation: 0,
-                  scale: 1,
-                  flipX: false,
-                  flipY: false,
-                })
-              }
-            >
-              Centralizar na folha
-            </Button>
-          ) : (
-            <div className={styles.buttonGrid}>
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => placeDecoration(selectedDeco.id, 'tl')}
-              >
-                Superior Esq.
-              </Button>
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => placeDecoration(selectedDeco.id, 'tr')}
-              >
-                Superior Dir.
-              </Button>
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => placeDecoration(selectedDeco.id, 'bl')}
-              >
-                Inferior Esq.
-              </Button>
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => placeDecoration(selectedDeco.id, 'br')}
-              >
-                Inferior Dir.
-              </Button>
-            </div>
-          )}
-
-          <div className={styles.row} style={{ marginTop: '8px' }}>
-            <Button
-              variant="secondary"
-              size="sm"
-              icon={<FlipHorizontal size={16} strokeWidth={2.5} />}
-              onClick={() => updateElement(selectedDeco.id, { flipX: !selectedDeco.flipX })}
-            >
-              Espelhar ↔
-            </Button>
-            <Button
-              variant="secondary"
-              size="sm"
-              icon={<FlipVertical size={16} strokeWidth={2.5} />}
-              onClick={() => updateElement(selectedDeco.id, { flipY: !selectedDeco.flipY })}
-            >
-              Espelhar ↕
-            </Button>
-            <IconButton
-              icon={<Trash2 size={16} strokeWidth={2.5} />}
-              label="Remover enfeite"
-              variant="danger"
-              size="sm"
-              onClick={() => removeElement(selectedDeco.id)}
-            />
-          </div>
-        </Card>
       )}
 
       {/* Lista de enfeites presentes na folha */}

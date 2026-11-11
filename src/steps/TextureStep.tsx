@@ -12,6 +12,7 @@ import {
 } from '../brand/brand';
 import { getBorderTexture, getPaperTexture } from '../assets';
 import { Button } from '../components/ui/Button';
+import { HelpTip } from '../components/ui/HelpTip';
 import { Checkbox } from '../components/ui/Checkbox';
 import { PreviewImage } from '../components/ui/PreviewImage';
 import { Segmented } from '../components/ui/Segmented';
@@ -100,11 +101,13 @@ export const TextureStep: React.FC = () => {
 
   return (
     <div className={styles.container}>
-      <div className={styles.header}>
+      <div className={styles.titleRow}>
         <h2 className={styles.title}>6. Textura final ✨</h2>
-        <p className={styles.description}>
-          O acabamento da arte. Marque as texturas que quiser, regule e veja na hora — tudo começa desligado.
-        </p>
+        <HelpTip
+          label="Sobre esta etapa"
+          align="end"
+          tip="O acabamento da arte. Marque as texturas que quiser, regule e veja na hora — tudo começa desligado."
+        />
       </div>
 
       {allEnabled ? (

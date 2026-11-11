@@ -479,10 +479,6 @@ export const HomeScreen: React.FC = () => {
                 🌽
               </span>
               <h3 className={styles.emptyTitle}>Nenhum rascunho por aqui ainda</h3>
-              <p className={styles.emptyText}>
-                Bora criar a primeira arte? Escolha post único para uma imagem ou carrossel para
-                contar uma história em vários slides.
-              </p>
               <div className={styles.emptyActions}>
                 <CreateDraftDropdown onSelect={handleCreate} centered />
               </div>

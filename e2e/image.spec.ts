@@ -219,7 +219,10 @@ test.describe('Etapa 3 - Imagens do usuário', () => {
 
     // Regressão de empilhamento: o cartão "Objeto" não pode cobrir o balão.
     const balaoNoTopo = await page.evaluate(() => {
-      const balao = document.querySelector('[role="tooltip"]');
+      // Há mais de um (?) na etapa; interessa o balão aberto.
+      const balao = Array.from(document.querySelectorAll('[role="tooltip"]')).find(
+        (el) => getComputedStyle(el).visibility === 'visible',
+      );
       if (!balao) return false;
       const r = balao.getBoundingClientRect();
       const x = r.left + r.width * 0.75;

@@ -70,9 +70,14 @@ test.describe('Regressões da leva P0', () => {
   test('formato do post só aparece no post único', async ({ page }) => {
     await openCarousel(page);
     await expect(page.getByRole('heading', { name: 'Formato do post' })).toHaveCount(0);
-    await expect(
-      page.getByText('O formato foi definido na criação do carrossel.', { exact: false }),
-    ).toBeVisible();
+
+    // A explicação da etapa vive no balão do (?), não como texto fixo.
+    const help = page.getByRole('button', { name: 'Sobre esta etapa' });
+    const tip = page.getByText('O formato foi definido na criação do carrossel.', { exact: false });
+    await expect(help).toBeVisible();
+    await expect(tip).toBeHidden();
+    await help.focus();
+    await expect(tip).toBeVisible();
 
     await openSingle(page);
     await expect(page.getByRole('heading', { name: 'Formato do post' })).toBeVisible();
@@ -372,7 +377,10 @@ test.describe('Regressões da leva P0', () => {
 
     await page.locator('button[title*="Arabesco floral"]').first().click();
     await page.locator('button[title*="Folhagem rendada"]').first().click();
-    await expect(page.getByRole('heading', { name: /Opções de Folhagem rendada/ })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Selecionar Folhagem rendada' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
 
     const row = page.getByRole('button', { name: 'Selecionar Arabesco floral' });
     // Ponto de lista no lugar de "1. ...": rótulo limpo + marcador decorativo.
@@ -384,13 +392,13 @@ test.describe('Regressões da leva P0', () => {
     const box = await row.boundingBox();
     expect(box).not.toBeNull();
     await row.click({ position: { x: box!.width - 56, y: box!.height / 2 } });
-    await expect(page.getByRole('heading', { name: /Opções de Arabesco floral/ })).toBeVisible();
+    await expect(row).toHaveAttribute('aria-pressed', 'true');
 
     // A lixeira exclui só a sua linha, sem alterar a seleção do outro enfeite.
     const otherRow = page.getByRole('button', { name: 'Selecionar Folhagem rendada' }).locator('..');
     await otherRow.getByRole('button', { name: 'Remover' }).click();
     await expect(page.getByRole('button', { name: 'Selecionar Folhagem rendada' })).toHaveCount(0);
-    await expect(page.getByRole('heading', { name: /Opções de Arabesco floral/ })).toBeVisible();
+    await expect(row).toHaveAttribute('aria-pressed', 'true');
   });
 
   test('Leva 4: os três botões de criação de texto ficam lado a lado', async ({ page }) => {

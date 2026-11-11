@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { getBackground, manifest } from '../assets';
 import type { PostFormat } from '../brand/brand';
 import { Button } from '../components/ui/Button';
+import { HelpTip } from '../components/ui/HelpTip';
 import { Segmented } from '../components/ui/Segmented';
 import { Slider } from '../components/ui/Slider';
 import { ThumbGrid } from '../components/ui/ThumbGrid';
@@ -37,13 +38,17 @@ export const BackgroundStep: React.FC = () => {
 
   return (
     <div className={styles.container}>
-      <div className={styles.header}>
+      <div className={styles.titleRow}>
         <h2 className={styles.title}>1. Escolha o fundo 🌽</h2>
-        <p className={styles.description}>
-          {mode === 'carousel'
-            ? 'Escolha a textura da sua arte. O formato foi definido na criação do carrossel.'
-            : 'Selecione o formato do post e a textura da sua arte.'}
-        </p>
+        <HelpTip
+          label="Sobre esta etapa"
+          align="end"
+          tip={
+            mode === 'carousel'
+              ? 'Escolha a textura da sua arte. O formato foi definido na criação do carrossel.'
+              : 'Selecione o formato do post e a textura da sua arte.'
+          }
+        />
       </div>
 
       {/* No carrossel o formato é fixo desde a criação: mostrar um seletor que

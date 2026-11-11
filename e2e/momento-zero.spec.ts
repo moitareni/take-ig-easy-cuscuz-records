@@ -29,9 +29,9 @@ test.describe('Momento 0 — home Meus rascunhos (release v.3)', () => {
     await expect(page.getByTestId('create-draft-trigger')).toHaveCount(1);
     await expect(page.getByTestId('create-draft-trigger')).toContainText('Criar novo');
 
-    // Estado vazio explica o que fazer sem termos técnicos.
+    // Estado vazio: só o título e o gatilho de criação (sem parágrafo explicativo).
     await expect(page.getByText('Nenhum rascunho por aqui ainda')).toBeVisible();
-    await expect(page.getByText('Bora criar a primeira arte?', { exact: false })).toBeVisible();
+    await expect(page.getByText('Bora criar a primeira arte?', { exact: false })).toHaveCount(0);
   });
 
   test('M0.4: segunda tela do carrossel com glifos na proporção certa e botão Voltar', async ({ page }) => {

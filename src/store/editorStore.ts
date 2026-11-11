@@ -5,7 +5,6 @@ import {
   BORDER_TEXTURE_OPACITY_DEFAULT,
   BORDER_TEXTURE_OPACITY_MAX,
   BORDER_TEXTURE_OPACITY_MIN,
-  DECORATION_ANCHORS,
   FINISH_ENABLED_DEFAULT,
   GRAIN_INTENSITY_MAX,
   GRAIN_INTENSITY_MIN,
@@ -188,7 +187,6 @@ export interface EditorState {
   reconcileImages: (availableIds: Set<string>) => void;
   setLogoSize: (size: LogoSize) => void;
   placeLogo: (place: LogoPlace) => void;
-  placeDecoration: (id: string, corner: Corner) => void;
 
   updateElement: (id: string, patch: Partial<El>) => void;
   /** Aplica a regra Texto ≤ Título. Retorna o tamanho efetivamente aplicado. */
@@ -591,28 +589,6 @@ export const useEditor = create<EditorState>()(
             if (ghosts.length === 0) return;
             const ids = new Set(ghosts.map((g) => g.id));
             setDoc((d) => ({ ...d, elements: d.elements.filter((e) => !ids.has(e.id)) }));
-          },
-
-          placeDecoration: (id, corner) => {
-            const el = findEl(id);
-            if (!el || el.kind !== 'decoration') return;
-            const asset = getDecoration(el.assetId)!;
-            const anchor = DECORATION_ANCHORS[el.assetId] ?? { h: 'left', v: 'top' };
-            const wantH = corner[1] === 'l' ? 'left' : 'right';
-            const wantV = corner[0] === 't' ? 'top' : 'bottom';
-            const flipX = anchor.h === 'center' ? false : anchor.h !== wantH;
-            const flipY = anchor.v !== wantV;
-            const { width: postW, height: postH } = getPostDimensions(get().doc.format);
-            const w = asset.width * el.scale;
-            const h = asset.height * el.scale;
-            mapEl(id, (e) => ({
-              ...e,
-              flipX,
-              flipY,
-              rotation: 0,
-              x: wantH === 'left' ? w / 2 : postW - w / 2,
-              y: wantV === 'top' ? h / 2 : postH - h / 2,
-            }));
           },
 
           updateElement: (id, patch) => {

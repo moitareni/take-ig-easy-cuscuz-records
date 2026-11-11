@@ -43,11 +43,6 @@ test.describe('Cuscuz Records Insta Kit - Fluxo Completo', () => {
     // Agora o botão muda para "Próximo"
     await expect(page.locator('footer button:has-text("Próximo")')).toBeVisible();
 
-    // Testa o posicionamento rápido no canto inferior esquerdo
-    const blBtn = page.locator('button:has-text("Inferior Esq.")');
-    await expect(blBtn).toBeVisible();
-    await blBtn.click();
-
     // Avança para o Passo 3: Imagem
     await page.locator('footer button:has-text("Próximo")').click();
     await expect(page.locator('h2')).toContainText('3. Sua imagem');

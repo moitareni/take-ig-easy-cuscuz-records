@@ -3,6 +3,7 @@ import { Trash2 } from 'lucide-react';
 import { getLogo } from '../assets';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
+import { HelpTip } from '../components/ui/HelpTip';
 import { Segmented } from '../components/ui/Segmented';
 import { announceCanvasActivity, preloadImage } from '../lib/useImage';
 import { useEditor } from '../store/editorStore';
@@ -25,11 +26,13 @@ export const LogoStep: React.FC = () => {
 
   return (
     <div className={styles.container}>
-      <div className={styles.header}>
+      <div className={styles.titleRow}>
         <h2 className={styles.title}>5. Carimba a logo 🏷️</h2>
-        <p className={styles.description}>
-          Esta etapa é opcional. Se desejar, insira a assinatura oficial da Cuscuz Records.
-        </p>
+        <HelpTip
+          label="Sobre esta etapa"
+          align="end"
+          tip="Esta etapa é opcional. Se desejar, insira a assinatura oficial da Cuscuz Records."
+        />
       </div>
 
       {!logo ? (
