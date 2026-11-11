@@ -183,40 +183,65 @@ test.describe('Regressões da leva P0', () => {
     await expect(page.locator('article').filter({ hasText: 'Show de São João' })).toHaveCount(1);
   });
 
-  test('Leva 2 (#13): prévias de textura em dropdown e Ativar todas com undo único', async ({ page }) => {
+  test('Textura: cartões compactos com checkbox, prévia sob hover e Ativar/Desativar todas com undo único', async ({ page }) => {
     await openSingle(page);
     await page.locator('button[title*="Pronto 1"]').first().click();
     await page.getByRole('button', { name: /6\. Textura/ }).click();
 
-    // Prévias fechadas por padrão
+    const paperCb = page.getByRole('checkbox', { name: 'Papel amassado' });
+    const borderCb = page.getByRole('checkbox', { name: 'Textura de borda' });
+    const grainCb = page.getByRole('checkbox', { name: 'Granulado' });
+
+    // Sem botões Ligado/Desligado nem texto explicativo; prévias fechadas
+    await expect(page.locator('button:has-text("(Desligado)")')).toHaveCount(0);
+    await expect(page.getByText('Opcional 🌽')).toHaveCount(0);
     await expect(page.getByAltText('Prévia do papel amassado')).toHaveCount(0);
-    await expect(page.getByAltText('Prévia da textura de borda')).toHaveCount(0);
+    await expect(paperCb).not.toBeChecked();
 
-    // Abrir summary revela a prévia
-    await page.locator('summary:has-text("Ver prévia da textura")').first().click();
+    // Clicar no cartão inteiro (no nome) liga/desliga; no slider, não
+    await page.getByRole('heading', { name: 'Papel amassado' }).click();
+    await expect(paperCb).toBeChecked();
+    await page.getByRole('heading', { name: 'Papel amassado' }).click();
+    await expect(paperCb).not.toBeChecked();
+
+    // "Prévia da textura" só se revela no hover do cartão e abre a imagem
+    const previewBtn = page.getByRole('button', { name: 'Prévia da textura' }).first();
+    const touchOnly = await page.evaluate(() => window.matchMedia('(hover: none)').matches);
+    await page.mouse.move(0, 0);
+    if (!touchOnly) {
+      await expect(previewBtn).toHaveCSS('opacity', '0');
+      await page.getByRole('heading', { name: 'Papel amassado' }).hover();
+    }
+    await expect(previewBtn).toHaveCSS('opacity', '1');
+    await previewBtn.click();
     await expect(page.getByAltText('Prévia do papel amassado')).toBeVisible();
+    // Abrir a prévia não liga o papel
+    await expect(paperCb).not.toBeChecked();
 
-    // Ativar todas liga os três de uma vez e desfaz em um único passo
+    // Ativar todas liga os três de uma vez e vira "Desativar todas"
     await page.waitForTimeout(450);
-    const activateAllBtn = page.getByRole('button', { name: 'Ativar todas' });
-    await expect(activateAllBtn).toBeEnabled();
-    await activateAllBtn.click();
-    await expect(activateAllBtn).toBeDisabled();
-    await expect(page.locator('button:has-text("Papel (Ligado)")')).toBeVisible();
-    await expect(page.locator('button:has-text("Borda (Ligado)")')).toBeVisible();
-    await expect(page.locator('button:has-text("Grain (Ligado)")')).toBeVisible();
+    await page.getByRole('button', { name: 'Ativar todas' }).click();
+    await expect(paperCb).toBeChecked();
+    await expect(borderCb).toBeChecked();
+    await expect(grainCb).toBeChecked();
+    const disableAllBtn = page.getByRole('button', { name: 'Desativar todas' });
+    await expect(disableAllBtn).toBeVisible();
 
+    // Desativar todas desliga os três; um único Ctrl+Z religa os três
+    await page.waitForTimeout(450);
+    await disableAllBtn.click();
+    await expect(paperCb).not.toBeChecked();
+    await expect(borderCb).not.toBeChecked();
+    await expect(grainCb).not.toBeChecked();
     await page.getByRole('button', { name: 'Desfazer (Ctrl+Z)' }).click();
-    await expect(page.locator('button:has-text("Papel (Desligado)")')).toBeVisible();
-    await expect(page.locator('button:has-text("Borda (Desligado)")')).toBeVisible();
-    await expect(page.locator('button:has-text("Grain (Desligado)")')).toBeVisible();
+    await expect(paperCb).toBeChecked();
+    await expect(borderCb).toBeChecked();
+    await expect(grainCb).toBeChecked();
 
     // Restaurar padrão desliga novamente
-    await activateAllBtn.click();
     await page.getByRole('button', { name: /Restaurar padrão/ }).click();
-    await expect(page.locator('button:has-text("Papel (Desligado)")')).toBeVisible();
+    await expect(paperCb).not.toBeChecked();
   });
-
   test('Presets de logo seguem margem das guias (ou 0 quando desativada) e novo layout de Header/Dock', async ({
     page,
   }) => {

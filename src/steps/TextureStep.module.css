@@ -1,0 +1,111 @@
+.option {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  background-color: var(--c-surface);
+  border: 3px solid var(--c-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+  user-select: none;
+  transition:
+    background-color var(--duration-fast) ease,
+    transform var(--duration-fast) ease,
+    box-shadow var(--duration-fast) ease;
+}
+
+.option:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+
+/* Ligada: creme de apoio, o checkbox amarelo já sinaliza o estado. */
+.enabled {
+  background-color: var(--c-creme);
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+}
+
+.name {
+  margin-right: auto;
+  font-size: 18px;
+  line-height: 1.1;
+  color: var(--c-text-main);
+}
+
+/* "Prévia da textura": só aparece com o mouse sobre o cartão (ou foco/aberto/toque). */
+.previewBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border: 2px solid var(--c-border);
+  border-radius: var(--radius-sm);
+  background-color: var(--c-surface);
+  box-shadow: var(--shadow-sm);
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--c-text-main);
+  cursor: pointer;
+  opacity: 0;
+  transition:
+    opacity var(--duration-fast) ease,
+    background-color var(--duration-fast) ease;
+}
+
+.option:hover .previewBtn,
+.previewBtn:focus-visible,
+.previewBtn[aria-expanded='true'] {
+  opacity: 1;
+}
+
+.previewBtn:hover {
+  background-color: var(--c-amarelo);
+}
+
+@media (hover: none) {
+  .previewBtn {
+    opacity: 1;
+  }
+}
+
+.chevron {
+  flex: none;
+  transition: transform var(--duration-fast) ease;
+}
+
+.previewBtn[aria-expanded='true'] .chevron {
+  transform: rotate(180deg);
+}
+
+/* Ajustes (slider etc.): clicar aqui NÃO liga/desliga o cartão. */
+.controls {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  cursor: default;
+}
+
+.controlLabel {
+  font-family: var(--font-body);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.preview {
+  aspect-ratio: 3 / 4;
+  border: 3px solid var(--c-border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-sm);
+}
+
+.previewImage {
+  object-fit: cover;
+}

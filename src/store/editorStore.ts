@@ -165,6 +165,8 @@ export interface EditorState {
   setBorderTexture: (patch: Partial<BorderTextureFinish>) => void;
   /** Liga os três acabamentos num único passo de undo, preservando opacidades e tamanho do grão. */
   enableAllFinishes: () => void;
+  /** Inverso de enableAllFinishes: desliga os três em um único passo de undo, preservando os ajustes. */
+  disableAllFinishes: () => void;
   /** Volta ao acabamento padrão (papel, granulado e textura de borda desligados). */
   resetFinish: () => void;
   /** Define o zoom prendendo nos limites 25%–400%. */
@@ -383,6 +385,19 @@ export const useEditor = create<EditorState>()(
                   paper: { ...s.finish.paper, enabled: true },
                   grain: { ...s.finish.grain, enabled: true },
                   borderTexture: { ...s.finish.borderTexture, enabled: true },
+                },
+              };
+            }),
+          disableAllFinishes: () =>
+            set((s) => {
+              if (!s.finish.paper.enabled && !s.finish.grain.enabled && !s.finish.borderTexture.enabled) {
+                return {};
+              }
+              return {
+                finish: {
+                  paper: { ...s.finish.paper, enabled: false },
+                  grain: { ...s.finish.grain, enabled: false },
+                  borderTexture: { ...s.finish.borderTexture, enabled: false },
                 },
               };
             }),

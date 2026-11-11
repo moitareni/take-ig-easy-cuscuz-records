@@ -274,7 +274,34 @@ describe('acabamentos (etapa 6 — Textura)', () => {
     expect(undone.borderTexture.enabled).toBe(false);
     expect(undone.grain.enabled).toBe(false);
   });
-});
+
+  it('disableAllFinishes desliga os três em um único passo de undo e preserva ajustes', () => {
+    useEditor.getState().setPaper({ opacity: 65, enabled: true });
+    idle();
+    useEditor.getState().setBorderTexture({ opacity: 25, enabled: true });
+    idle();
+    useEditor.getState().setGrain({ intensity: 70, size: 'G', enabled: true });
+    useEditor.temporal.getState().clear();
+    idle();
+
+    useEditor.getState().disableAllFinishes();
+    const after = useEditor.getState().finish;
+    expect(after.paper).toEqual({ enabled: false, opacity: 65 });
+    expect(after.borderTexture).toEqual({ enabled: false, opacity: 25 });
+    expect(after.grain).toEqual({ enabled: false, intensity: 70, size: 'G' });
+    expect(useEditor.temporal.getState().pastStates).toHaveLength(1);
+
+    // Com os três já desligados é no-op e não polui o undo
+    idle();
+    useEditor.getState().disableAllFinishes();
+    expect(useEditor.temporal.getState().pastStates).toHaveLength(1);
+
+    undo();
+    const undone = useEditor.getState().finish;
+    expect(undone.paper.enabled).toBe(true);
+    expect(undone.borderTexture.enabled).toBe(true);
+    expect(undone.grain.enabled).toBe(true);
+  });});
 
 describe('manifest.decorations — convenção de nomes (#6)', () => {
   it('mantém os 12 ids imutáveis e aplica labels padronizados sem CAIXA ALTA nem sufixo numérico', () => {

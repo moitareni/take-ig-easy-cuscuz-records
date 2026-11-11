@@ -90,17 +90,20 @@ test.describe('Cuscuz Records Insta Kit - Fluxo Completo', () => {
     // Passo 6: acabamento é opcional e vem desligado por padrão (regra da marca)
     await page.locator('footer button:has-text("Próximo")').click();
     await expect(page.locator('h2')).toContainText('6. Textura');
-    await expect(page.locator('button:has-text("Papel (Desligado)")')).toBeVisible();
-    await expect(page.locator('button:has-text("Borda (Desligado)")')).toBeVisible();
-    await expect(page.locator('button:has-text("Grain (Desligado)")')).toBeVisible();
+    const paperCb = page.getByRole('checkbox', { name: 'Papel amassado' });
+    const borderCb = page.getByRole('checkbox', { name: 'Textura de borda' });
+    const grainCb = page.getByRole('checkbox', { name: 'Granulado' });
+    await expect(paperCb).not.toBeChecked();
+    await expect(borderCb).not.toBeChecked();
+    await expect(grainCb).not.toBeChecked();
 
     // Liga o acabamento recomendado (papel + borda + grain) antes de exportar
-    await page.locator('button:has-text("Papel (Desligado)")').click();
-    await page.locator('button:has-text("Borda (Desligado)")').click();
-    await page.locator('button:has-text("Grain (Desligado)")').click();
-    await expect(page.locator('button:has-text("Papel (Ligado)")')).toBeVisible();
-    await expect(page.locator('button:has-text("Borda (Ligado)")')).toBeVisible();
-    await expect(page.locator('button:has-text("Grain (Ligado)")')).toBeVisible();
+    await paperCb.check();
+    await borderCb.check();
+    await grainCb.check();
+    await expect(paperCb).toBeChecked();
+    await expect(borderCb).toBeChecked();
+    await expect(grainCb).toBeChecked();
 
     // Dispara a exportação e captura o download (botão Exportar no Header)
     const downloadPromise = page.waitForEvent('download');
