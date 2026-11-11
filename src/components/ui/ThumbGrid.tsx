@@ -1,6 +1,7 @@
 import React from 'react';
 import { Check } from 'lucide-react';
 import { preloadImage, useCanvasActivity, useLoadingImages } from '../../lib/useImage';
+import { useDelayedFlag } from '../../lib/useDelayedFlag';
 import { PreviewImage } from './PreviewImage';
 import styles from './ThumbGrid.module.css';
 
@@ -28,12 +29,14 @@ export const ThumbGrid: React.FC<ThumbGridProps> = ({
 }) => {
   const loadingUrls = useLoadingImages();
   const activity = useCanvasActivity();
+  // Spinner na miniatura só se a espera passar de ~200 ms (esperas curtas não piscam).
+  const waiting = useDelayedFlag(loadingUrls.size > 0 || activity !== null);
 
   return (
     <div className={`${styles.grid} ${styles[`cols-${columns}`]}`}>
       {items.map((item) => {
         const isSelected = selectedId === item.id;
-        const isLoadingOnCanvas = Boolean(
+        const isLoadingOnCanvas = waiting && Boolean(
           item.src &&
             (loadingUrls.has(item.src) || (activity?.targetSrc && activity.targetSrc === item.src)),
         );

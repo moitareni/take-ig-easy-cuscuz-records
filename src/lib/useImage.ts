@@ -17,15 +17,14 @@ export interface CanvasActivity {
   id: number;
   kind: CanvasActivityKind;
   label: string;
+  /** Asset que a folha está esperando; a atividade termina assim que ele estiver pronto. */
   targetSrc?: string | null;
-  minUntil: number;
 }
 
 const activityStore = createExternalStore<CanvasActivity | null>(null);
-const MIN_ACTIVITY_MS = 280;
+/** Trava de segurança: nenhuma atividade fica "presa" para sempre. */
 const MAX_ACTIVITY_MS = 8000;
 let activitySeq = 0;
-let minTimer: ReturnType<typeof setTimeout> | null = null;
 let maxTimer: ReturnType<typeof setTimeout> | null = null;
 
 function setUrlLoading(src: string, isLoading: boolean) {
@@ -36,54 +35,49 @@ function setUrlLoading(src: string, isLoading: boolean) {
   if (isLoading) next.add(src);
   else next.delete(src);
   loadingUrlsStore.set(next);
-  checkClearActivity();
 }
 
+/** Encerra a atividade anunciada assim que o que ela esperava já está pronto. */
 function checkClearActivity() {
   const cur = activityStore.get();
   if (!cur) return;
-  if (Date.now() < cur.minUntil) return;
-  if (cur.targetSrc && loadingUrlsStore.get().has(cur.targetSrc)) return;
+  if (cur.targetSrc) {
+    const settled = cache.has(cur.targetSrc) || failed.has(cur.targetSrc);
+    if (!settled) return;
+  }
   if (cur.kind === 'image' && importBusyStore.get() > 0) return;
-  clearActivityTimers();
-  activityStore.set(null);
+  clearActivity();
 }
 
-function clearActivityTimers() {
-  if (minTimer) {
-    clearTimeout(minTimer);
-    minTimer = null;
-  }
+function clearActivity() {
   if (maxTimer) {
     clearTimeout(maxTimer);
     maxTimer = null;
   }
+  activityStore.set(null);
 }
 
 /**
- * Dispara o selo de feedback visual na folha (ex.: "Trocando o fundo... 🌽",
- * "Colando Esqueleto solar... ✨"). Permanece visível pelo menos por
- * `MIN_ACTIVITY_MS` e enquanto `targetSrc` (ou importação de foto) estiver em andamento.
+ * Anuncia que a folha está esperando algo (ex.: "Trocando o fundo... 🌽").
+ * Isto **não** mostra nada sozinho: o selo só aparece se a espera passar de
+ * `CANVAS_FEEDBACK_DELAY_MS` (ver `useDelayedFlag`) e some no instante em que
+ * `targetSrc` (ou a importação da foto) termina. Se o asset já está em cache,
+ * nem é anunciado.
  */
 export function announceCanvasActivity(
   kind: CanvasActivityKind,
   label: string,
   targetSrc?: string | null,
 ): void {
-  clearActivityTimers();
-  const now = Date.now();
-  const next: CanvasActivity = {
-    id: ++activitySeq,
-    kind,
-    label,
-    targetSrc: targetSrc ?? null,
-    minUntil: now + MIN_ACTIVITY_MS,
-  };
-  activityStore.set(next);
-  minTimer = setTimeout(() => {
-    minTimer = null;
-    checkClearActivity();
-  }, MIN_ACTIVITY_MS + 10);
+  if (maxTimer) {
+    clearTimeout(maxTimer);
+    maxTimer = null;
+  }
+  if (targetSrc && cache.has(targetSrc)) {
+    activityStore.set(null);
+    return;
+  }
+  activityStore.set({ id: ++activitySeq, kind, label, targetSrc: targetSrc ?? null });
   maxTimer = setTimeout(() => {
     maxTimer = null;
     activityStore.set(null);
@@ -98,7 +92,6 @@ export function endImageImport(count = 1): void {
   importBusyStore.set((n) => Math.max(0, n - Math.max(1, count)));
   checkClearActivity();
 }
-
 export function useLoadingImages(): ReadonlySet<string> {
   return loadingUrlsStore.use();
 }
@@ -130,12 +123,14 @@ function fetchImage(src: string, trackCanvasLoading: boolean): Promise<HTMLImage
       failed.delete(src);
       inFlight.delete(src);
       setUrlLoading(src, false);
+      checkClearActivity();
       resolve(img);
     };
     img.onerror = () => {
       failed.add(src);
       inFlight.delete(src);
       setUrlLoading(src, false);
+      checkClearActivity();
       resolve(null);
     };
     img.src = src;

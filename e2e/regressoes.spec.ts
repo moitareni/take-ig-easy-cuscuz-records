@@ -288,22 +288,48 @@ test.describe('Regressões da leva P0', () => {
     await expect(page.getByRole('menuitem', { name: /Todos os slides/ })).toBeVisible();
   });
 
-  test('Feedback de carregamento: trocar fundo e adicionar enfeite mostra o selo sobre a folha', async ({ page }) => {
+  test('Feedback de carregamento só aparece se demorar e some quando o item fica pronto', async ({ page }) => {
+    // Atrasa os assets da marca para simular uma espera real.
+    await page.route('**/brand/**/*.webp', async (route) => {
+      const url = route.request().url();
+      if (url.includes('/thumbs/')) return route.continue();
+      await new Promise((r) => setTimeout(r, 900));
+      await route.continue();
+    });
     await page.goto('/');
     await waitForHome(page);
     await page.getByRole('button', { name: 'Criar post único', exact: true }).click();
     await expect(page.getByRole('heading', { name: /1\. Escolha o fundo/ })).toBeVisible();
 
     const overlay = page.getByTestId('canvas-busy-overlay');
+
+    // Espera longa: o selo aparece (depois do atraso) e some assim que o fundo carrega.
     await page.locator('button[title*="Pronto 2"]').first().click();
     await expect(overlay).toBeVisible();
     await expect(overlay).toContainText(/fundo/i);
     await expect(overlay).toBeHidden({ timeout: 10000 });
 
+    // Asset já em cache: trocar para ele de novo não mostra selo nenhum.
+    await page.locator('button[title*="Pronto 3"]').first().click();
+    await expect(overlay).toBeHidden({ timeout: 10000 });
+    await page.locator('button[title*="Pronto 2"]').first().click();
+    await page.waitForTimeout(600);
+    await expect(overlay).toHaveCount(0);
+  });
+
+  test('Feedback de carregamento: enfeite com asset rápido não pisca o selo', async ({ page }) => {
+    await page.goto('/');
+    await waitForHome(page);
+    await page.getByRole('button', { name: 'Criar post único', exact: true }).click();
+    await expect(page.getByRole('heading', { name: /1\. Escolha o fundo/ })).toBeVisible();
+    await page.locator('button[title*="Pronto 1"]').first().click();
     await page.getByRole('button', { name: /Próximo/ }).click();
     await expect(page.getByRole('heading', { name: /2\./ })).toBeVisible();
-    await page.locator('button[title*="Arabesco floral"]').first().click();
-    await expect(overlay).toBeVisible();
-    await expect(overlay).toContainText(/Arabesco floral/);
-    await expect(overlay).toBeHidden({ timeout: 10000 });
+
+    const item = page.locator('button[title*="Arabesco floral"]').first();
+    await item.hover();
+    await page.waitForTimeout(1500); // preload em hover termina
+    await item.click();
+    await page.waitForTimeout(600);
+    await expect(page.getByTestId('canvas-busy-overlay')).toHaveCount(0);
   });});

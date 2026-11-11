@@ -1,6 +1,7 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { Group, Layer, Rect, Stage } from 'react-konva';
 import Konva from 'konva';
+import { useDelayedFlag } from '../lib/useDelayedFlag';
 import {
   getBackground,
   getBorderTexture,
@@ -107,7 +108,7 @@ export const EditorCanvas = forwardRef<EditorCanvasHandle>((_props, ref) => {
   const importBusy = useImageImportBusy();
   const canvasActivity = useCanvasActivity();
 
-  const activeFeedback = useMemo((): { kind: CanvasActivityKind; label: string } | null => {
+  const pendingFeedback = useMemo((): { kind: CanvasActivityKind; label: string } | null => {
     if (canvasActivity) {
       return { kind: canvasActivity.kind, label: canvasActivity.label };
     }
@@ -156,6 +157,10 @@ export const EditorCanvas = forwardRef<EditorCanvasHandle>((_props, ref) => {
     }
     return null;
   }, [canvasActivity, importBusy, loadingUrls, doc.backgroundId, doc.elements, finish]);
+
+  // O selo só aparece se a espera passar de ~200 ms e some assim que o item fica pronto.
+  const feedbackVisible = useDelayedFlag(pendingFeedback !== null);
+  const activeFeedback = feedbackVisible ? pendingFeedback : null;
 
   const carouselMode = useCarousel((s) => s.mode);
   const carouselSlides = useCarousel((s) => s.slides);
