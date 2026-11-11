@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { ChevronLeft, ChevronRight, Copy, Plus, Trash2 } from 'lucide-react';
 import { CAROUSEL_MAX_SLIDES } from '../../brand/brand';
 import type { EditorCanvasHandle } from '../../canvas/EditorCanvas';
@@ -14,6 +14,9 @@ export interface SlideTrayProps {
   stageRef: React.RefObject<EditorCanvasHandle | null>;
 }
 
+/** Teto de segurança: se a captura falhar, os botões nunca ficam travados. */
+const TRAY_READY_TIMEOUT_MS = 1500;
+
 export const SlideTray: React.FC<SlideTrayProps> = ({ stageRef }) => {
   const slides = useCarousel((s) => s.slides);
   const activeSlideIndex = useCarousel((s) => s.activeSlideIndex);
@@ -26,6 +29,21 @@ export const SlideTray: React.FC<SlideTrayProps> = ({ stageRef }) => {
   const showToast = useEditor((s) => s.showToast);
 
   const [pendingRemoveIndex, setPendingRemoveIndex] = useState<number | null>(null);
+  const [trayReady, setTrayReady] = useState(false);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setTrayReady(true), TRAY_READY_TIMEOUT_MS);
+    return () => clearTimeout(timer);
+  }, []);
+
+  // A miniatura do slide ativo é a única que `useSlideThumb` gera de saída;
+  // as demais usam o fundo ou o placeholder e não bloqueiam a tira.
+  const handlePreviewReady = useCallback(
+    (index: number) => {
+      if (index === activeSlideIndex) setTrayReady(true);
+    },
+    [activeSlideIndex],
+  );
 
   const atMaxSlides = slides.length >= CAROUSEL_MAX_SLIDES;
   const atMinSlides = slides.length <= 1;
@@ -79,13 +97,17 @@ export const SlideTray: React.FC<SlideTrayProps> = ({ stageRef }) => {
 
   return (
     <>
-      <nav aria-label="Tira de slides do carrossel" className={styles.tray}>
+      <nav
+        aria-label="Tira de slides do carrossel"
+        className={styles.tray}
+        aria-busy={!trayReady}
+      >
         <div className={styles.stripRow}>
           <IconButton
             icon={<ChevronLeft size={18} strokeWidth={2.5} />}
             label="Slide anterior"
             size="sm"
-            disabled={!hasPrev}
+            disabled={!trayReady || !hasPrev}
             onClick={() => setActiveSlide(activeSlideIndex - 1)}
           />
 
@@ -104,6 +126,8 @@ export const SlideTray: React.FC<SlideTrayProps> = ({ stageRef }) => {
                 onSelect={setActiveSlide}
                 onRequestRemove={handleRequestRemove}
                 onReorder={reorderSlides}
+                disabled={!trayReady}
+                onPreviewReady={handlePreviewReady}
               />
             ))}
 
@@ -116,7 +140,7 @@ export const SlideTray: React.FC<SlideTrayProps> = ({ stageRef }) => {
                   ? 'Chegou no limite de 10 slides'
                   : 'Adicionar novo slide vazio'
               }
-              disabled={atMaxSlides}
+              disabled={!trayReady || atMaxSlides}
               onClick={handleAddSlide}
             >
               <Plus size={20} strokeWidth={2.75} />
@@ -127,7 +151,7 @@ export const SlideTray: React.FC<SlideTrayProps> = ({ stageRef }) => {
             icon={<ChevronRight size={18} strokeWidth={2.5} />}
             label="Próximo slide"
             size="sm"
-            disabled={!hasNext}
+            disabled={!trayReady || !hasNext}
             onClick={() => setActiveSlide(activeSlideIndex + 1)}
           />
         </div>
@@ -137,12 +161,19 @@ export const SlideTray: React.FC<SlideTrayProps> = ({ stageRef }) => {
             Slide {activeSlideIndex + 1} de {slides.length}
           </span>
 
+          {!trayReady && (
+            <span className={styles.loading} role="status" aria-live="polite">
+              <span className={styles.loadingDot} aria-hidden="true" />
+              Preparando as miniaturas...
+            </span>
+          )}
+
           <div className={styles.actions}>
             <Button
               variant="secondary"
               size="sm"
               icon={<Plus size={14} strokeWidth={2.5} />}
-              disabled={atMaxSlides}
+              disabled={!trayReady || atMaxSlides}
               onClick={handleAddSlide}
             >
               Novo slide vazio
@@ -152,7 +183,7 @@ export const SlideTray: React.FC<SlideTrayProps> = ({ stageRef }) => {
               variant="secondary"
               size="sm"
               icon={<Copy size={14} strokeWidth={2.5} />}
-              disabled={atMaxSlides}
+              disabled={!trayReady || atMaxSlides}
               onClick={handleDuplicateSlide}
             >
               Duplicar slide atual
@@ -162,7 +193,7 @@ export const SlideTray: React.FC<SlideTrayProps> = ({ stageRef }) => {
               variant="danger"
               size="sm"
               icon={<Trash2 size={14} strokeWidth={2.5} />}
-              disabled={atMinSlides}
+              disabled={!trayReady || atMinSlides}
               onClick={() => handleRequestRemove(activeSlideIndex)}
             >
               Remover slide

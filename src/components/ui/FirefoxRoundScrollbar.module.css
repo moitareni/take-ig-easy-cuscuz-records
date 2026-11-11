@@ -1,0 +1,41 @@
+.layer {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 90;
+}
+
+.track {
+  position: fixed;
+  width: 6px;
+  border-radius: var(--radius-pill);
+  background-color: var(--c-surface-muted);
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.thumb {
+  position: absolute;
+  left: 0;
+  width: 6px;
+  border-radius: var(--radius-pill);
+  background-color: var(--c-amarelo-quente);
+  cursor: grab;
+  transition: background-color 0.12s ease;
+}
+
+.thumb:hover {
+  background-color: var(--c-amarelo);
+}
+
+.thumbActive {
+  background-color: var(--c-barro);
+  cursor: grabbing;
+}
+
+/* Oculta a barra nativa quadrada com setas do Firefox em todos os containers
+   internos para que apenas a barra fina e arredondada apareça */
+:global(html.ff-round-scrollbars),
+:global(html.ff-round-scrollbars) * {
+  scrollbar-width: none !important;
+}

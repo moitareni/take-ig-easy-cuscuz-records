@@ -1,11 +1,14 @@
 import React from 'react';
 import { Check } from 'lucide-react';
+import { preloadImage, useCanvasActivity, useLoadingImages } from '../../lib/useImage';
+import { PreviewImage } from './PreviewImage';
 import styles from './ThumbGrid.module.css';
 
 export interface ThumbItem {
   id: string;
   label: string;
   thumb: string;
+  src?: string;
 }
 
 export interface ThumbGridProps {
@@ -23,30 +26,47 @@ export const ThumbGrid: React.FC<ThumbGridProps> = ({
   columns = 2,
   onSelect,
 }) => {
+  const loadingUrls = useLoadingImages();
+  const activity = useCanvasActivity();
+
   return (
     <div className={`${styles.grid} ${styles[`cols-${columns}`]}`}>
       {items.map((item) => {
         const isSelected = selectedId === item.id;
+        const isLoadingOnCanvas = Boolean(
+          item.src &&
+            (loadingUrls.has(item.src) || (activity?.targetSrc && activity.targetSrc === item.src)),
+        );
         return (
           <button
             key={item.id}
             type="button"
             className={`${styles.item} ${styles[aspectRatio]} ${isSelected ? styles.selected : ''}`}
+            onMouseEnter={() => {
+              if (item.src) void preloadImage(item.src);
+            }}
+            onFocus={() => {
+              if (item.src) void preloadImage(item.src);
+            }}
             onClick={() => onSelect(item.id)}
             title={item.label}
           >
             <div className={styles.imageWrapper}>
-              <img
-                src={item.thumb}
-                alt={item.label}
-                loading="lazy"
-                className={styles.image}
-              />
-              {isSelected && (
-                <div className={styles.checkBadge}>
-                  <Check size={14} strokeWidth={4} color="#ffffff" />
-                </div>
-              )}
+              <PreviewImage src={item.thumb} alt={item.label} imgClassName={styles.image}>
+                {(isSelected || isLoadingOnCanvas) && (
+                  <span
+                    className={`${styles.checkBadge} ${
+                      isLoadingOnCanvas ? styles.checkBadgeLoading : ''
+                    }`}
+                  >
+                    {isLoadingOnCanvas ? (
+                      <span className={styles.badgeSpinner} aria-hidden="true" />
+                    ) : (
+                      <Check size={14} strokeWidth={4} color="#0b0500" />
+                    )}
+                  </span>
+                )}
+              </PreviewImage>
             </div>
             <span className={styles.label}>{item.label}</span>
           </button>

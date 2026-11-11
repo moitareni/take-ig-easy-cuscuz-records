@@ -227,8 +227,9 @@ describe('carouselStore', () => {
   });
 
   describe('Propriedade 20: Isolamento de chaves de persistência', () => {
-    it('operações do carrossel nunca gravam na chave cuscuz-insta-kit:rascunho', () => {
+    it('operações do carrossel nunca gravam nas chaves legadas do localStorage', () => {
       localStorage.setItem(SINGLE_STORAGE_KEY, '{"preserved":true}');
+      localStorage.setItem(CAROUSEL_STORAGE_KEY, '{"preserved":true}');
       const setItemSpy = vi.spyOn(Storage.prototype, 'setItem');
 
       useCarousel.getState().setMode('carousel');
@@ -244,10 +245,14 @@ describe('carouselStore', () => {
 
       vi.runAllTimers();
 
-      const singleCalls = setItemSpy.mock.calls.filter(([k]) => k === SINGLE_STORAGE_KEY);
-      expect(singleCalls).toHaveLength(0);
+      // A persistência agora é feita pela sessão de rascunhos no IndexedDB;
+      // os stores em memória não tocam mais no localStorage.
+      const writes = setItemSpy.mock.calls.filter(
+        ([k]) => k === SINGLE_STORAGE_KEY || k === CAROUSEL_STORAGE_KEY,
+      );
+      expect(writes).toHaveLength(0);
       expect(localStorage.getItem(SINGLE_STORAGE_KEY)).toBe('{"preserved":true}');
-      expect(localStorage.getItem(CAROUSEL_STORAGE_KEY)).not.toBeNull();
+      expect(localStorage.getItem(CAROUSEL_STORAGE_KEY)).toBe('{"preserved":true}');
 
       setItemSpy.mockRestore();
     });
@@ -279,7 +284,7 @@ describe('carouselStore', () => {
       }
     });
 
-    it('payload persistido no localStorage não contém blobs nem base64 de imagem', () => {
+    it('o estado do carrossel guarda só metadados: sem blobs nem base64 de imagem', () => {
       useCarousel.getState().setMode('carousel');
       useCarousel.getState().updateActiveSlide(
         {
@@ -288,12 +293,17 @@ describe('carouselStore', () => {
         },
         defaultFinish(),
       );
-      vi.runAllTimers();
 
-      const payload = localStorage.getItem(CAROUSEL_STORAGE_KEY);
-      expect(payload).not.toBeNull();
-      expect(payload!).not.toContain('data:image');
-      expect(payload!).toContain('img-id-123');
+      // O que seria gravado é exatamente o corpo serializável do rascunho.
+      const payload = JSON.stringify({
+        slides: useCarousel.getState().slides,
+        activeSlideIndex: useCarousel.getState().activeSlideIndex,
+        format: useCarousel.getState().format,
+        mode: useCarousel.getState().mode,
+      });
+      expect(payload).not.toContain('data:image');
+      expect(payload).not.toContain('blob:');
+      expect(payload).toContain('img-id-123');
     });
   });
 

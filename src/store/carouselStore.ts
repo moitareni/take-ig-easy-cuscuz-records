@@ -1,8 +1,6 @@
 import { create } from 'zustand';
-import { createJSONStorage, persist } from 'zustand/middleware';
 import { CAROUSEL_MAX_SLIDES, type PostFormat } from '../brand/brand';
 import { reconcileAllCrossovers, syncCrossoverFromActiveSlide } from '../lib/crossover';
-import { debouncedLocalStorage, isSingleDraftWriteSuppressed, setSuppressSingleDraftWrite } from '../lib/storage';
 import type { Doc, FinishState, SlideData } from '../types';
 import { defaultFinish, emptyDoc, sanitize, sanitizeFinish, useEditor } from './editorStore';
 
@@ -78,22 +76,15 @@ function enforceValidCrossover(slides: SlideData[], format: PostFormat = '3:4'):
  * limpa o histórico temporal para isolar o undo/redo por slide.
  */
 export function loadSlideIntoEditor(slide: SlideData): void {
-  const prevSuppressed = isSingleDraftWriteSuppressed();
-  setSuppressSingleDraftWrite(true);
-  try {
-    useEditor.setState({
-      doc: slide.doc,
-      finish: slide.finish,
-      step: 0,
-      selectedIds: [],
-      selectedId: null,
-      editingId: null,
-    });
-    useEditor.temporal.getState().clear();
-  } finally {
-    const mode = useCarousel.getState().mode;
-    setSuppressSingleDraftWrite(mode === 'carousel' ? true : prevSuppressed);
-  }
+  useEditor.setState({
+    doc: slide.doc,
+    finish: slide.finish,
+    step: 0,
+    selectedIds: [],
+    selectedId: null,
+    editingId: null,
+  });
+  useEditor.temporal.getState().clear();
 }
 
 function cloneDocAndFinish(doc: Doc, finish: FinishState, format: PostFormat): { doc: Doc; finish: FinishState } {
@@ -129,8 +120,7 @@ export interface CarouselState {
 }
 
 export const useCarousel = create<CarouselState>()(
-  persist(
-    (set, get) => ({
+  (set, get) => ({
       slides: [defaultSlide('3:4')],
       activeSlideIndex: 0,
       format: '3:4',
@@ -139,7 +129,6 @@ export const useCarousel = create<CarouselState>()(
       exportProgress: null,
 
       setMode: (mode) => {
-        setSuppressSingleDraftWrite(mode === 'carousel');
         set({ mode });
         if (mode === 'carousel') {
           const { slides, activeSlideIndex } = get();
@@ -162,15 +151,9 @@ export const useCarousel = create<CarouselState>()(
       addSlide: () => {
         const s = get();
         if (s.slides.length >= CAROUSEL_MAX_SLIDES) {
-          const prev = isSingleDraftWriteSuppressed();
-          setSuppressSingleDraftWrite(true);
-          try {
-            useEditor
-              .getState()
-              .showToast('info', 'Chegou no limite! Um carrossel pode ter até 10 slides 🎠');
-          } finally {
-            setSuppressSingleDraftWrite(s.mode === 'carousel' ? true : prev);
-          }
+          useEditor
+            .getState()
+            .showToast('info', 'Chegou no limite! Um carrossel pode ter até 10 slides 🎠');
           return;
         }
         const newSlide = defaultSlide(s.format);
@@ -184,15 +167,9 @@ export const useCarousel = create<CarouselState>()(
         const s = get();
         if (index < 0 || index >= s.slides.length) return;
         if (s.slides.length >= CAROUSEL_MAX_SLIDES) {
-          const prev = isSingleDraftWriteSuppressed();
-          setSuppressSingleDraftWrite(true);
-          try {
-            useEditor
-              .getState()
-              .showToast('info', 'Chegou no limite! Um carrossel pode ter até 10 slides 🎠');
-          } finally {
-            setSuppressSingleDraftWrite(s.mode === 'carousel' ? true : prev);
-          }
+          useEditor
+            .getState()
+            .showToast('info', 'Chegou no limite! Um carrossel pode ter até 10 slides 🎠');
           return;
         }
         const source = s.slides[index];
@@ -214,15 +191,9 @@ export const useCarousel = create<CarouselState>()(
         const s = get();
         if (index < 0 || index >= s.slides.length) return;
         if (s.slides.length <= 1) {
-          const prev = isSingleDraftWriteSuppressed();
-          setSuppressSingleDraftWrite(true);
-          try {
-            useEditor
-              .getState()
-              .showToast('info', 'O carrossel precisa ter pelo menos 1 slide 😅');
-          } finally {
-            setSuppressSingleDraftWrite(s.mode === 'carousel' ? true : prev);
-          }
+          useEditor
+            .getState()
+            .showToast('info', 'O carrossel precisa ter pelo menos 1 slide 😅');
           return;
         }
         const rawSlides = s.slides.filter((_, i) => i !== index);
@@ -296,7 +267,6 @@ export const useCarousel = create<CarouselState>()(
         }),
 
       resetCarousel: () => {
-        setSuppressSingleDraftWrite(false);
         const initial = defaultSlide('3:4');
         set({
           slides: [initial],
@@ -308,57 +278,6 @@ export const useCarousel = create<CarouselState>()(
         });
       },
     }),
-    {
-      name: CAROUSEL_STORAGE_KEY,
-      version: 1,
-      storage: createJSONStorage(() => debouncedLocalStorage(300)),
-      partialize: (s) => ({
-        slides: s.slides,
-        activeSlideIndex: s.activeSlideIndex,
-        format: s.format,
-        mode: s.mode,
-      }),
-      merge: (persisted, current) => {
-        const p = persisted as Partial<CarouselState> | undefined;
-        if (!p) return current;
-        const format = sanitizeFormat(p.format);
-        const rawSlides =
-          Array.isArray(p.slides) && p.slides.length > 0
-            ? p.slides.slice(0, CAROUSEL_MAX_SLIDES)
-            : [defaultSlide(format)];
-        const slides = enforceValidCrossover(
-          rawSlides.map((s) => sanitizeSlide(s, format)),
-          format,
-        );
-        const activeSlideIndex =
-          typeof p.activeSlideIndex === 'number' &&
-          Number.isInteger(p.activeSlideIndex) &&
-          p.activeSlideIndex >= 0 &&
-          p.activeSlideIndex < slides.length
-            ? p.activeSlideIndex
-            : 0;
-        const mode: CarouselMode =
-          p.mode === 'carousel' || p.mode === 'single' ? p.mode : null;
-        setSuppressSingleDraftWrite(mode === 'carousel');
-        return {
-          ...current,
-          slides,
-          activeSlideIndex,
-          format,
-          mode,
-        };
-      },
-      onRehydrateStorage: () => (state) => {
-        if (state?.mode === 'carousel') {
-          setSuppressSingleDraftWrite(true);
-          const active = state.slides[state.activeSlideIndex];
-          if (active) {
-            setTimeout(() => loadSlideIntoEditor(active), 0);
-          }
-        }
-      },
-    },
-  ),
 );
 
 /**
@@ -380,7 +299,6 @@ export function switchSingleToCarousel(): void {
   });
   useCarousel.getState().setMode('carousel');
   loadSlideIntoEditor(firstSlide);
-  localStorage.removeItem(SINGLE_STORAGE_KEY);
 }
 
 if (typeof window !== 'undefined') {

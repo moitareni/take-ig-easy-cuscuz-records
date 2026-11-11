@@ -1,5 +1,43 @@
 # Documento de Requisitos: Carrossel de Posts para Instagram
 
+> **Revisão 10/11/2026 — release v3 "Meus rascunhos" + levas de correção 1, 2 e 3.**
+> Este documento descreve a **primeira** implementação do carrossel. A release v3
+> substituiu a arquitetura de persistência e a tela inicial; os pontos abaixo
+> **prevalecem** sobre as seções seguintes. Fonte de verdade: `AGENTS.md`.
+>
+> **Leva 3 (10/11/2026) — o que prevalece**
+> - **Header/Dock**: logo da Cuscuz e botão "Começar do zero" removidos do Header; selo de autosave ao lado do título; `ModeDropdown` vem **antes** de `Exportar`/`Exportação`; Desfazer/Refazer ficam na base do dock direito.
+> - **Renomear sem salto**: título editável como pílula creme (sem borda/outline, auto-dimensionada, máx. 80 caracteres, texto selecionado ao focar) no Header **e** no card da home (clique no título ou no lápis "Renomear"); o card ganhou o botão direto "Exportar".
+> - **Seleção** de texto/realces em amarelo da marca (`--c-amarelo`); scrollbars finas e arredondadas em todos os navegadores (`FirefoxRoundScrollbar`).
+> - **Logo**: presets de posição seguem `layoutGuides.margin` (ou 0 com guias/margens desativadas).
+> - **Feedback de carregamento**: selo temático `canvas-busy-overlay` sobre a folha ao trocar fundo / adicionar enfeite, foto, logo ou textura (mín. 280 ms), spinner na miniatura escolhida, `preloadImage` em hover/foco, pré-decode das fotos importadas e texturas globais carregadas **só quando ligadas**. Ver `AGENTS.md` §2.14 e §2.17.
+>
+> **O que mudou**
+> - **Não existe mais "Tela Inicial" com `ModeSelector`.** A home "Meus rascunhos"
+>   (`screens/HomeScreen.tsx`) é sempre a primeira tela. Cria-se um carrossel pelo
+>   botão "Carrossel"/"Criar carrossel" e escolhe-se o formato num diálogo; a criação
+>   de post único e a conversão de modos acontecem **no mesmo rascunho**.
+> - **Persistência migrou de `localStorage` para IndexedDB**: `DraftMeta` +
+>   `CarouselDraftBody { slides, activeSlideIndex, format }` em `lib/drafts/`,
+>   schema v2, autosave 450 ms, capas em store `covers`, locks por aba. As chaves
+>   `cuscuz-insta-kit:rascunho` / `cuscuz-insta-kit:carrossel` são legadas e apenas
+>   migradas (mantidas como rollback).
+> - A conversão Post único → Carrossel agora pede **confirmação amigável**
+>   ("Trocar pra Carrossel?") e Carrossel → Post único usa o `SlidePickerDialog`
+>   **preservando o mesmo `activeDraftId`** (não descarta nem cria rascunho novo).
+> - O formato do carrossel é fixo desde a criação; o seletor "Formato do post"
+>   foi **removido** do Passo 1 no modo carrossel (Leva 1).
+> - A `SlideTray` é importada **estaticamente** (sem `React.lazy`), tem altura
+>   reservada e nasce com botões **desativados + loading** (`trayReady`), liberados
+>   pela miniatura do slide ativo ou por timeout de 1,5 s (Leva 1).
+> - Miniaturas usam `PreviewImage` com spinner temático; sem `alt` cru nem "Vazio" piscando.
+> - `finish` é por slide; `enableAllFinishes()` (Leva 2) afeta somente o slide ativo
+>   e é sincronizado pelo subscriber de `main.tsx`.
+>
+> **Critérios superados:** 1.1, 1.4, 1.5, 1.10, 1.11 (tela inicial/`ModeSelector`);
+> 8.1–8.3, 8.8 (`localStorage` e debounce 300 ms); 9.2, 9.4 (chaves exclusivas e
+> code splitting da tira); 10.4 (miniaturas lazy). Ver Requisitos 12 e 13 no final.
+
 ## Introdução
 
 Esta feature adiciona ao **Cuscuz Records Insta Kit** o modo **Carrossel**, que permite criar e exportar séries de até 10 slides para o feed do Instagram. Cada slide é um `Doc` + `FinishState` completamente independente, editado pelo mesmo editor de 6 etapas já existente. O carrossel é exportado como arquivo ZIP contendo os slides numerados em PNG, mantendo 100% das regras visuais da Cuscuz Records em cada slide individualmente.
@@ -13,18 +51,18 @@ O modo **Post único** existente não sofre nenhuma alteração.
 - **App**: a aplicação web Cuscuz Records Insta Kit.
 - **Modo Post Único**: o modo de edição atual que produz um único PNG.
 - **Modo Carrossel**: o novo modo de edição que gerencia múltiplos slides.
-- **Tela Inicial**: a tela de boas-vindas exibida antes de entrar em qualquer modo de edição.
+- **Home "Meus rascunhos"**: a tela inicial (`screens/HomeScreen.tsx`), sempre exibida no boot; lista os rascunhos e oferece criação, abertura, renomear, duplicar e excluir.
 - **Slide**: uma unidade de conteúdo do carrossel, composta por um `Doc` e um `FinishState` independentes.
 - **SlideData**: estrutura de dados que representa um slide: `{ id, doc, finish }`.
 - **Slide Ativo**: o slide atualmente exibido no canvas de edição.
 - **Tira de Miniaturas**: componente horizontal ou lateral com previews clicáveis de todos os slides do carrossel.
 - **Miniatura**: representação em baixa resolução do slide gerada a partir do Stage do Konva.
-- **Gerenciador de Carrossel**: o store Zustand dedicado ao estado do carrossel (`cuscuz-insta-kit:carrossel`).
+- **Gerenciador de Carrossel**: `useCarousel` (`store/carouselStore.ts`), store de sessão em memória; a persistência é feita por `lib/drafts/session.ts` no IndexedDB.
 - **Editor de Slide**: o editor de 6 etapas (canvas + painéis) já existente, que opera sobre o Slide Ativo.
 - **CAROUSEL_MAX_SLIDES**: constante com valor `10`, limite máximo de slides por carrossel.
 - **JSZip**: biblioteca JavaScript usada para geração do arquivo ZIP de exportação.
 - **ZIP de Exportação**: arquivo `cuscuz-carrossel-YYYY-MM-DD-HHmm.zip` com os slides numerados `slide-01.png`, `slide-02.png`, etc.
-- **Rascunho de Carrossel**: os dados do carrossel (slides e índice ativo) persistidos no `localStorage` sob a chave `cuscuz-insta-kit:carrossel`.
+- **Rascunho de Carrossel**: `CarouselDraftBody` (`slides`, `activeSlideIndex`, `format`) gravado no store `documents` do IndexedDB, com `DraftMeta` no store `drafts` e capa WebP no store `covers`.
 - **Doc**: estrutura de dados do documento de um post com campos `format`, `backgroundId`, `backgroundFlipX`, `backgroundFlipY`, `backgroundOffsetY` e `elements[]`.
 - **FinishState**: estrutura de acabamento do post com os campos `paper`, `grain` e `borderTexture`.
 - **PostFormat**: um dos três formatos suportados: `'3:4'`, `'4:3'` ou `'1:1'`.
@@ -43,19 +81,19 @@ O modo **Post único** existente não sofre nenhuma alteração.
 
 ---
 
-### Requisito 1 — Seleção de Modo na Tela Inicial
+### Requisito 1 — Seleção de Modo na home "Meus rascunhos"
 
 **User Story:** Como usuária da Cuscuz Records, quero escolher entre criar um Post Único ou um Carrossel na tela inicial, para que eu entre diretamente no modo correto sem precisar navegar por menus.
 
 #### Critérios de Aceitação
 
-1. THE App SHALL exibir a Tela Inicial com duas opções visíveis: "Post único" e "Carrossel", antes de entrar em qualquer modo de edição.
+1. THE App SHALL exibir sempre, como primeira tela, a home "Meus rascunhos" com a lista de rascunhos e as ações de criação ("Post único" / "Carrossel" no header quando há rascunhos; "Criar post único" / "Criar carrossel" no quadro quando a lista está vazia). Antes de entrar no Modo Carrossel, THE App SHALL solicitar o PostFormat em diálogo próprio.
 
-2. WHEN a usuária seleciona "Post único" na Tela Inicial, THE App SHALL abrir o Editor de Slide no Modo Post Único, sem exibir a Tira de Miniaturas.
+2. WHEN a usuária seleciona "Post único"/"Criar post único" na home, THE App SHALL abrir o Editor de Slide no Modo Post Único, sem exibir a Tira de Miniaturas.
 
-3. WHEN a usuária seleciona "Carrossel" na Tela Inicial, THE App SHALL abrir o Modo Carrossel com um slide inicial vazio e exibir a Tira de Miniaturas.
+3. WHEN a usuária seleciona "Carrossel"/"Criar carrossel" na home e confirma o PostFormat no diálogo, THE App SHALL abrir o Modo Carrossel com um slide inicial vazio e exibir a Tira de Miniaturas.
 
-4. WHEN a usuária está no Modo Post Único e solicita trocar para o Modo Carrossel, THE App SHALL converter automaticamente o `Doc` e o `FinishState` atuais no primeiro slide do carrossel, sem exibir confirmação, e abrir o Modo Carrossel com esse slide como Slide Ativo.
+4. WHEN a usuária está no Modo Post Único e solicita trocar para o Modo Carrossel pelo dropdown de modo, THE App SHALL exibir a confirmação amigável "Trocar pra Carrossel?" e, ao confirmar, converter o `Doc` e o `FinishState` atuais no primeiro slide **do mesmo rascunho** (`activeDraftId` preservado), abrindo o Modo Carrossel com esse slide como Slide Ativo.
 
 5. WHEN a usuária está no Modo Post Único, o `Doc` atual estiver vazio (sem fundo selecionado e sem elementos) e a usuária solicitar trocar para o Modo Carrossel, THE App SHALL abrir o Modo Carrossel com um primeiro slide vazio, sem exibir confirmação.
 
@@ -67,9 +105,9 @@ O modo **Post único** existente não sofre nenhuma alteração.
 
 9. WHEN a usuária cancela o diálogo de troca para Modo Post Único, THE App SHALL manter o Modo Carrossel sem alterações.
 
-10. WHEN a usuária abre o App com um Rascunho de Carrossel salvo, THE App SHALL oferecer a opção de retomar o rascunho diretamente, sem passar pela Tela Inicial novamente.
+10. WHEN a usuária abre o App com rascunhos salvos, THE App SHALL exibir a home "Meus rascunhos" com o card "Continuar de onde parou" apontando para o último rascunho aberto; `openDraft()` restaura o carrossel com todos os slides e o índice ativo.
 
-11. WHEN a usuária abre o App com um rascunho de Post Único salvo, THE App SHALL restaurar o Modo Post Único diretamente, sem passar pela Tela Inicial.
+11. WHEN a usuária abre um rascunho de Post Único pela home, THE App SHALL restaurar o Modo Post Único diretamente no editor; a home permanece o ponto de entrada de qualquer sessão.
 
 ---
 
@@ -173,7 +211,7 @@ O modo **Post único** existente não sofre nenhuma alteração.
 
 2. WHEN a usuária modifica qualquer elemento do Slide Ativo, THE Gerenciador de Carrossel SHALL persistir a alteração somente no `SlideData` do Slide Ativo.
 
-3. THE Editor de Slide SHALL aplicar todas as regras existentes de forma independente por slide: limite de 5 imagens por slide (conforme `IMAGE_MAX_COUNT`), regra `Texto ≤ Título`, limites de fonte (`FONT_SIZE_MIN`, `FONT_SIZE_MAX`) e restrições de logo única por slide.
+3. THE Editor de Slide SHALL aplicar todas as regras existentes de forma independente por slide: limite de 5 imagens por slide (`IMAGE_MAX_COUNT`), regra `Texto ≤ Título`, limites de fonte por estilo (`FONT_SIZE_MIN = 16`, `BODY_FONT_SIZE_MAX = 320`, `HEADING_FONT_SIZE_MAX = 4000`) e restrições de logo única por slide.
 
 4. WHILE o Modo Carrossel está ativo, THE App SHALL manter o histórico de undo/redo (zundo) vinculado ao Slide Ativo, com limite de 50 entradas por slide.
 
@@ -219,13 +257,13 @@ O modo **Post único** existente não sofre nenhuma alteração.
 
 #### Critérios de Aceitação
 
-1. THE Gerenciador de Carrossel SHALL persistir o Rascunho de Carrossel no `localStorage` sob a chave `cuscuz-insta-kit:carrossel`, com a estrutura `{ slides: SlideData[], activeSlideIndex: number, format: PostFormat }`.
+1. THE App SHALL persistir o carrossel como `CarouselDraftBody` (`{ id, kind: 'carousel', slides: SlideData[], activeSlideIndex, format, schemaVersion: 2 }`) no store `documents` do IndexedDB, com `DraftMeta` correspondente no store `drafts` (ver Revisão e Requisito 12).
 
-2. THE Gerenciador de Carrossel SHALL persistir somente os metadados de imagens (`imageId`, `name`, `width`, `height`) em cada `SlideData` no `localStorage`, nunca blobs ou base64.
+2. THE App SHALL persistir somente os metadados de imagens (`imageId`, `name`, `width`, `height`) em cada `SlideData` no `CarouselDraftBody`/IndexedDB, nunca blobs ou base64.
 
-3. THE Gerenciador de Carrossel SHALL salvar o Rascunho de Carrossel com debounce de 300ms após cada modificação e garantir a gravação imediata ao fechar a aba (evento `beforeunload`).
+3. THE App SHALL salvar o rascunho com autosave debounced de 450 ms (`SAVE_DEBOUNCE_MS`) via `flushDraft()`/`persistIfDirty()`, garantindo `flushSession()` em `visibilitychange`, `pagehide` e `beforeunload`, e exibindo o status no Header.
 
-4. WHEN o App é iniciado e existe um Rascunho de Carrossel válido na chave `cuscuz-insta-kit:carrossel`, THE App SHALL restaurar o carrossel com todos os slides e o índice ativo salvo.
+4. WHEN a usuária abre um rascunho de carrossel pela home, THE App SHALL restaurar (`openDraft()`) todos os slides e o índice ativo a partir do `CarouselDraftBody` no IndexedDB.
 
 5. WHEN o App é iniciado em Modo Carrossel, THE App SHALL executar a reconciliação de imagens considerando os `imageId`s de todos os slides (não apenas do Slide Ativo) contra o IndexedDB.
 
@@ -233,7 +271,7 @@ O modo **Post único** existente não sofre nenhuma alteração.
 
 7. WHEN o App é iniciado em Modo Carrossel, THE App SHALL executar o GC de imagens do IndexedDB considerando os `imageId`s e `cutFrom.imageId`s de todos os slides do carrossel para identificar blobs órfãos.
 
-8. THE Gerenciador de Carrossel SHALL validar e sanitizar cada `SlideData` restaurado do `localStorage` (formato válido, `backgroundId` existente no manifest, `elements` com metadados completos), usando valores padrão para campos inválidos ou ausentes.
+8. THE App SHALL validar e sanitizar cada `SlideData` restaurado do IndexedDB via `sanitizeDraftBody`/`sanitizeSlide` (formato válido, `backgroundId` existente no manifest, `elements` com metadados completos), usando valores padrão para campos inválidos ou ausentes.
 
 ---
 
@@ -243,13 +281,13 @@ O modo **Post único** existente não sofre nenhuma alteração.
 
 #### Critérios de Aceitação
 
-1. THE App SHALL manter o Modo Post Único completamente funcional e inalterado quando a usuária entra por essa opção na Tela Inicial.
+1. THE App SHALL manter o Modo Post Único completamente funcional quando a usuária entra por essa opção na home "Meus rascunhos".
 
-2. THE App SHALL manter a chave de persistência `cuscuz-insta-kit:rascunho` exclusiva do Modo Post Único, sem que o Modo Carrossel leia ou escreva nessa chave.
+2. THE App SHALL manter um único registro por rascunho no IndexedDB, identificado por `activeDraftId`, independentemente do modo; a conversão de modo SHALL preservar esse `id`. As chaves `localStorage` legadas são lidas apenas pela migração idempotente e não são mais escritas pelo app.
 
 3. THE App SHALL introduzir somente a biblioteca JSZip como nova dependência de produção para a feature de carrossel.
 
-4. THE App SHALL manter o bundle do Modo Post Único sem aumento de tamanho causado pelo código do Modo Carrossel, utilizando code splitting (lazy loading) para os módulos exclusivos do carrossel.
+4. THE App SHALL manter o bundle enxuto com `manualChunks` (`react`, `konva`, `carousel`/jszip) em `vite.config.ts`. A `SlideTray`, por ser leve e precisar aparecer no primeiro frame, é importada **estaticamente** (não é mais `React.lazy`); o carregamento pesado de `@huggingface/transformers` continua sob demanda.
 
 5. WHEN a usuária está no Modo Post Único, THE App SHALL não exibir a Tira de Miniaturas nem os controles de gerenciamento de slides.
 
@@ -269,7 +307,7 @@ O modo **Post único** existente não sofre nenhuma alteração.
 
 3. WHEN a usuária está editando o Slide Ativo de forma contínua (ex.: arrastando um slider), THE App SHALL atualizar a miniatura com debounce de no mínimo 400ms para não bloquear o canvas principal.
 
-4. THE App SHALL gerar as miniaturas de slides não-ativos de forma lazy (sob demanda, ao se tornarem visíveis na Tira de Miniaturas), sem bloquear a renderização inicial do Editor de Slide.
+4. THE App SHALL exibir a Tira de Miniaturas inteira no primeiro frame (import estático, altura reservada de 120 px) e gerar as miniaturas sob demanda pelo `useSlideThumb` (`isActive && isVisible`, debounce 400 ms, cache por `slideId`); enquanto não há prévia, cada miniatura SHALL mostrar o `PreviewImage` em loading, sem "Vazio" piscando.
 
 ---
 
@@ -300,3 +338,41 @@ O modo **Post único** existente não sofre nenhuma alteração.
 10. THE App SHALL renderizar os Elementos Crossover com fidelidade idêntica no preview, nas miniaturas e nos PNGs exportados do carrossel, persistindo-os na estrutura padrão dos slides.
 
 11. WHEN o usuário executa Ctrl+Z ou Ctrl+Y em qualquer um dos slides que compartilha o Elemento Crossover, THE App SHALL sincronizar imediatamente a alteração desfeita/refeita com o slide adjacente.
+
+---
+
+### Requisito 12 — Rascunhos, home e conversão de modo (`drafts-v3`)
+
+**User Story:** Como usuária, quero que meus carrosséis façam parte da minha lista de rascunhos, com nome, capa e retomada confiável.
+
+**Arquivos:** `src/screens/HomeScreen.tsx`, `src/store/draftsStore.ts`, `src/lib/drafts/*`, `src/components/Header.tsx`, `src/components/ModeDropdown.tsx`, `src/components/carousel/SlidePickerDialog.tsx`.
+
+#### Critérios de Aceitação
+
+1. THE App SHALL listar carrosséis e posts únicos na mesma home, com selo "Carrossel" e contagem de slides (`slideCount`) no card.
+2. THE App SHALL criar um carrossel a partir da home em duas decisões: escolher "Carrossel" e escolher o `PostFormat` no diálogo; THE App SHALL gravar `kind: 'carousel'` e `format` no `DraftMeta`.
+3. WHEN a usuária converte Post único → Carrossel, THEN THE App SHALL exibir confirmação e preservar o `activeDraftId`, o título e a capa do rascunho.
+4. WHEN a usuária converte Carrossel → Post único pelo `SlidePickerDialog`, THEN THE App SHALL manter o mesmo `activeDraftId`, trocar `kind` para `'single'` e oferecer "Desfazer" no toast.
+5. THE App SHALL atualizar `title`, `titleSource` e `slideCount` no autosave (`nextMetaForBody`), respeitando títulos renomeados (`titleSource: 'user'`).
+6. THE App SHALL permitir renomear o carrossel tanto na home quanto clicando no `<h1>` do Header (`renameActiveDraft`).
+7. WHEN a página é recarregada com um carrossel aberto, THEN THE App SHALL voltar para a home íntegra, com capa e card do carrossel visíveis.
+8. THE App SHALL executar reconciliação e GC de imagens considerando a **união** dos `imageId`s de todos os rascunhos (não só do ativo).
+
+---
+
+### Requisito 13 — Tira, formato e prévias (`carousel-ux`, levas 1 e 2)
+
+**User Story:** Como usuária, quero a barra de slides disponível imediatamente e sem controles que não funcionam.
+
+**Arquivos:** `src/screens/EditorScreen.tsx`, `src/components/carousel/SlideTray.tsx`, `src/components/carousel/SlideThumb.tsx`, `src/canvas/hooks/useSlideThumb.ts`, `src/components/ui/PreviewImage.tsx`, `src/steps/BackgroundStep.tsx`, `src/steps/TextureStep.tsx`, `src/store/editorStore.ts`.
+
+#### Critérios de Aceitação
+
+1. THE App SHALL renderizar a `SlideTray` no primeiro frame do Modo Carrossel (import estático, sem `React.lazy`/`Suspense`), com `min-height: 120px` e `flex: 0 0 auto` para não deslocar a folha.
+2. WHILE `trayReady === false`, THE App SHALL manter todos os botões da tira desativados, `aria-busy="true"` no `<nav>` e o texto "Preparando as miniaturas..." com `role="status"`.
+3. THE App SHALL liberar os botões quando o `PreviewImage` do slide ativo reportar `loaded`/`error`, **ou** após 1,5 s de segurança, de modo que uma falha de captura nunca deixe a tira travada.
+4. THE App SHALL exibir em cada miniatura o `PreviewImage` (spinner temático) e o selo ordinal; THE App SHALL não exibir `alt` cru nem o texto "Vazio" piscando no slide ativo.
+5. WHILE o Modo Carrossel está ativo, THE App SHALL ocultar a seção "Formato do post" no Passo 1 e mostrar a descrição "O formato foi definido na criação do carrossel."; o Header continua exibindo o formato via `FormatGlyph` + `POST_FORMATS`.
+6. THE App SHALL aplicar o espelhamento do fundo pela `BackgroundMirrorToolbar` do dock, inclusive no carrossel, sem o card "Opções do Fundo" no painel.
+7. THE App SHALL aplicar "Ativar todas" e as prévias em `<details>` por slide: `enableAllFinishes()` altera somente o `finish` do Slide Ativo, e o subscriber de `main.tsx` o sincroniza com `updateActiveSlide`.
+8. THE App SHALL manter o selo "Slide X de Y" junto à folha (`role="status"`, `aria-live="polite"`) somado ao contador da tira, ambos com o mesmo texto.

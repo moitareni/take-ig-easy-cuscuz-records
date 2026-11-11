@@ -1,6 +1,13 @@
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { Group, Layer, Rect, Stage } from 'react-konva';
 import Konva from 'konva';
+import {
+  getBackground,
+  getBorderTexture,
+  getDecoration,
+  getLogo,
+  getPaperTexture,
+} from '../assets';
 import { COLORS, GUIDE_SNAP_THRESHOLD, getPostDimensions } from '../brand/brand';
 import { alignDelta, snapToCenter, snapToGuides } from '../lib/align';
 import { CROSSOVER_ZONE, canElementBleedToSide } from '../lib/crossover';
@@ -12,6 +19,13 @@ import {
   unionBox,
   type GroupScaleBounds,
 } from '../lib/multiSelect';
+import {
+  useCanvasActivity,
+  useImageImportBusy,
+  useLoadingImages,
+  type CanvasActivityKind,
+} from '../lib/useImage';
+import { getUserImageEntry } from '../lib/userImages';
 import { useCarousel } from '../store/carouselStore';
 import { useEditor } from '../store/editorStore';
 
@@ -89,6 +103,59 @@ export const EditorCanvas = forwardRef<EditorCanvasHandle>((_props, ref) => {
   const guides = useEditor((s) => s.guides);
   const layoutGuides = useEditor((s) => s.layoutGuides);
   const finish = useEditor((s) => s.finish);
+  const loadingUrls = useLoadingImages();
+  const importBusy = useImageImportBusy();
+  const canvasActivity = useCanvasActivity();
+
+  const activeFeedback = useMemo((): { kind: CanvasActivityKind; label: string } | null => {
+    if (canvasActivity) {
+      return { kind: canvasActivity.kind, label: canvasActivity.label };
+    }
+    if (importBusy > 0) {
+      return { kind: 'image', label: 'Colando sua foto na folha... 📸' };
+    }
+    if (loadingUrls.size === 0) return null;
+
+    const bgAsset = getBackground(doc.backgroundId);
+    if (bgAsset?.src && loadingUrls.has(bgAsset.src)) {
+      return { kind: 'background', label: 'Aplicando o fundo... 🌽' };
+    }
+    for (let i = doc.elements.length - 1; i >= 0; i--) {
+      const el = doc.elements[i];
+      if (el.kind === 'image') {
+        const entry = getUserImageEntry(el.imageId);
+        if (entry?.url && loadingUrls.has(entry.url)) {
+          return { kind: 'image', label: 'Colando sua foto na folha... 📸' };
+        }
+      } else if (el.kind === 'decoration') {
+        const deco = getDecoration(el.assetId);
+        if (deco?.src && loadingUrls.has(deco.src)) {
+          return {
+            kind: 'decoration',
+            label: deco.label ? `Colando ${deco.label}... ✨` : 'Colando enfeite na folha... ✨',
+          };
+        }
+      } else if (el.kind === 'logo') {
+        const logo = getLogo(el.variant);
+        if (logo?.src && loadingUrls.has(logo.src)) {
+          return { kind: 'logo', label: 'Carimbando a logo... 🏷️' };
+        }
+      }
+    }
+    if (finish.paper.enabled) {
+      const paper = getPaperTexture();
+      if (paper?.src && loadingUrls.has(paper.src)) {
+        return { kind: 'texture', label: 'Aplicando textura... ✨' };
+      }
+    }
+    if (finish.borderTexture?.enabled) {
+      const border = getBorderTexture();
+      if (border?.src && loadingUrls.has(border.src)) {
+        return { kind: 'texture', label: 'Aplicando textura... ✨' };
+      }
+    }
+    return null;
+  }, [canvasActivity, importBusy, loadingUrls, doc.backgroundId, doc.elements, finish]);
 
   const carouselMode = useCarousel((s) => s.mode);
   const carouselSlides = useCarousel((s) => s.slides);
@@ -403,7 +470,7 @@ export const EditorCanvas = forwardRef<EditorCanvasHandle>((_props, ref) => {
     return () => {
       cancelled = true;
     };
-  }, [selectedIds, editingId, doc.elements]);
+  }, [selectedIds, editingId, doc.elements, loadingUrls.size]);
 
   // Alinhamento preciso à página via bounding box relativo à camada
   const alignSelected = useCallback(
@@ -866,6 +933,22 @@ export const EditorCanvas = forwardRef<EditorCanvasHandle>((_props, ref) => {
           </Layer>
         </Stage>
         </div>
+        {activeFeedback && (
+          <div
+            className={`${styles.canvasBusyOverlay} ${
+              activeFeedback.kind === 'background' || activeFeedback.kind === 'texture'
+                ? styles.canvasBusyOverlayVeil
+                : ''
+            }`}
+            data-testid="canvas-busy-overlay"
+            aria-hidden="true"
+          >
+            <div className={styles.canvasBusyBadge}>
+              <span className={styles.canvasBusySpinner} />
+              <span className={styles.canvasBusyLabel}>{activeFeedback.label}</span>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Editor de texto in-place ao dar duplo clique (estilo Photoshop) */}
@@ -919,7 +1002,7 @@ export const EditorCanvas = forwardRef<EditorCanvasHandle>((_props, ref) => {
               'bottom-right',
             ]}
             rotateEnabled
-            borderStroke={COLORS.verde}
+            borderStroke={COLORS.amarelo}
             borderStrokeWidth={3}
             borderDash={[6, 4]}
             anchorFill={COLORS.amarelo}
@@ -946,7 +1029,7 @@ export const EditorCanvas = forwardRef<EditorCanvasHandle>((_props, ref) => {
                 const f = newBox.width / g.startW;
                 if (Math.abs(f - 1) > 1e-3) {
                   if (f > g.bounds.max) {
-                    notifyGroupLimit(groupLimitMessage(g.bounds.maxReason, 'max'));
+                    notifyGroupLimit(groupLimitMessage(g.bounds.maxReason, 'max', g.bounds.maxCap));
                     return oldBox;
                   }
                   const lo = Math.max(g.bounds.min, g.minFactor);

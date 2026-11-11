@@ -86,9 +86,19 @@
   padding: 2px;
 }
 
-/* Botão de download ocupa a largura cheia do dock */
-.dock .dockDownload {
+/* Grupo Desfazer / Refazer no dock lateral */
+.dockHistory {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background-color: var(--c-surface);
+  border: 3px solid var(--c-border);
+  border-radius: var(--radius-md);
+  padding: 8px 6px;
+  box-shadow: var(--shadow-md);
   width: 100%;
+  animation: cutePop 0.2s var(--ease-bounce);
 }
 
 @media (max-width: 640px) {

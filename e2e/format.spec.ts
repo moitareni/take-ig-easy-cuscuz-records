@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
-import { dismissModeSelector } from './helpers';
+import { startEditor } from './helpers';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 declare global {
@@ -43,7 +43,7 @@ async function isBackgroundInteractive(page: Page) {
 test.describe('Formatos de Post (3:4, 4:3 e 1:1)', () => {
   test('troca de formato e valida proporção da folha', async ({ page }) => {
     await page.goto('/');
-    await dismissModeSelector(page);
+    await startEditor(page);
 
     // 1. Inicia em 3:4 padrão
     await expect(page.locator('button:has-text("Vertical (3:4)")')).toBeVisible();
@@ -70,7 +70,7 @@ test.describe('Formatos de Post (3:4, 4:3 e 1:1)', () => {
 
   test('formato 1:1: corte vertical por botões rápidos e slider', async ({ page }) => {
     await page.goto('/');
-    await dismissModeSelector(page);
+    await startEditor(page);
 
     // Escolhe formato 1:1
     await page.locator('button:has-text("Quadrado (1:1)")').click();
@@ -113,7 +113,7 @@ test.describe('Formatos de Post (3:4, 4:3 e 1:1)', () => {
 
   test('deslize do fundo ativado no Passo 1 e estritamente travado fora dele', async ({ page }) => {
     await page.goto('/');
-    await dismissModeSelector(page);
+    await startEditor(page);
 
     // Formato 1:1 e fundo selecionado
     await page.locator('button:has-text("Quadrado (1:1)")').click();
@@ -139,7 +139,7 @@ test.describe('Formatos de Post (3:4, 4:3 e 1:1)', () => {
 
   test('exportação no formato 1:1 gera PNG exatamente 1080×1080', async ({ page }) => {
     await page.goto('/');
-    await dismissModeSelector(page);
+    await startEditor(page);
 
     // Seleciona formato 1:1 e um fundo
     await page.locator('button:has-text("Quadrado (1:1)")').click();
@@ -147,7 +147,7 @@ test.describe('Formatos de Post (3:4, 4:3 e 1:1)', () => {
 
     // Dispara o download
     const downloadPromise = page.waitForEvent('download');
-    await page.locator('button[aria-label*="Baixar post"]').first().click();
+    await page.getByRole('button', { name: 'Exportar', exact: true }).click();
     const download = await downloadPromise;
 
     // Salva temporariamente e verifica dimensões

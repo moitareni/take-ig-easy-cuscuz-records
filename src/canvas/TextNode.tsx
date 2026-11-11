@@ -42,7 +42,7 @@ export const TextNode: React.FC<TextNodeProps> = ({
 }) => {
   const groupRef = useRef<Konva.Group>(null);
   const textMeasurerRef = useRef<Konva.Text>(null);
-  const [texture] = useImage(manifest.borderTexture.src);
+  const [texture] = useImage(element.border !== 'none' ? manifest.borderTexture.src : null);
 
   const isHeadline = element.style !== 'body';
   const fontFamily = isHeadline ? FONT_HEADLINE : FONT_BODY;

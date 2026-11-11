@@ -1,5 +1,18 @@
 # Plano de Implementação — Carrossel de Posts para Instagram
 
+> **Revisão 10/11/2026.** As tasks abaixo concluem a **primeira** implementação do
+> carrossel (`ModeSelector` + `localStorage`). A release v3 "Meus rascunhos"
+> substituiu essa arquitetura e as três levas de correção ajustaram a UX; ambas
+> estão registradas na "Fase 2" ao final. Em caso de conflito, prevalecem a Fase 2
+> e o `AGENTS.md`.
+>
+> **Leva 3 (10/11/2026) — o que prevalece**
+> - **Header/Dock**: logo da Cuscuz e botão "Começar do zero" removidos do Header; selo de autosave ao lado do título; `ModeDropdown` vem **antes** de `Exportar`/`Exportação`; Desfazer/Refazer ficam na base do dock direito.
+> - **Renomear sem salto**: título editável como pílula creme (sem borda/outline, auto-dimensionada, máx. 80 caracteres, texto selecionado ao focar) no Header **e** no card da home (clique no título ou no lápis "Renomear"); o card ganhou o botão direto "Exportar".
+> - **Seleção** de texto/realces em amarelo da marca (`--c-amarelo`); scrollbars finas e arredondadas em todos os navegadores (`FirefoxRoundScrollbar`).
+> - **Logo**: presets de posição seguem `layoutGuides.margin` (ou 0 com guias/margens desativadas).
+> - **Feedback de carregamento**: selo temático `canvas-busy-overlay` sobre a folha ao trocar fundo / adicionar enfeite, foto, logo ou textura (mín. 280 ms), spinner na miniatura escolhida, `preloadImage` em hover/foco, pré-decode das fotos importadas e texturas globais carregadas **só quando ligadas**. Ver `AGENTS.md` §2.14 e §2.17.
+
 ## Visão Geral
 
 Implementação incremental do Modo Carrossel para o Cuscuz Records Insta Kit em TypeScript/React. A estratégia segue oito etapas: fundação de tipos e utilitários puros → persistência e boot → tela inicial → tira de miniaturas → gerenciamento de slides → isolamento de undo/redo → exportação ZIP → code splitting. O editor existente não é refatorado; o `useCarousel` orquestra em torno dele.
@@ -282,3 +295,36 @@ Implementação incremental do Modo Carrossel para o Cuscuz Records Insta Kit em
   ]
 }
 ```
+
+---
+
+## Fase 2 — Release v3 e levas de correção (concluída)
+
+- [x] 2.1 Substituir `ModeSelector`/Tela Inicial pela home "Meus rascunhos"
+  - [x] 2.1.1 `screens/HomeScreen.tsx`, `screens/EditorScreen.tsx`, `App.tsx`, `store/draftsStore.ts`
+  - [x] 2.1.2 Criação de carrossel com diálogo de formato; botões do header ocultos no estado vazio
+  - [x] 2.1.3 `components/Header.tsx` com `ModeDropdown`, selo de autosave e `FormatGlyph`
+- [x] 2.2 Migrar persistência para IndexedDB (`src/lib/drafts/`)
+  - [x] 2.2.1 `CarouselDraftBody` + `DraftMeta` + `covers`, schema v2, migração idempotente
+  - [x] 2.2.2 Autosave 450 ms, `flushSession`, `navigator.locks`, `BroadcastChannel`
+  - [x] 2.2.3 Remover `persist` de `useEditor`/`useCarousel`; subscriber de sincronização em `main.tsx`
+  - [x] 2.2.4 Conversão de modo preservando `activeDraftId` (com confirmação e "Desfazer")
+  - [x] 2.2.5 Capas (`ensureCover`/`captureAndSaveCover`) e backup em ZIP
+- [x] 2.3 Leva 1 — confiança e prévias
+  - [x] 2.3.1 (#12) Home íntegra após reload: CSS da capa + geração no autosave
+  - [x] 2.3.2 (#4) `PreviewImage` com spinner temático em todas as prévias
+  - [x] 2.3.3 (#10) `SlideTray` estática, altura reservada, `trayReady` com carregamento
+  - [x] 2.3.4 (#5) Seletor "Formato do post" removido no carrossel
+  - [x] 2.3.5 (#7) Tetos de fonte por estilo (corpo 320 / título 4000)
+- [x] 2.4 Leva 2 — UX e identidade (implementada pelo Reni)
+  - [x] 2.4.1 (#1) `HelpTip` (`(?)`) no título da seção de rascunhos
+  - [x] 2.4.2 (#2) `CREATE_SINGLE`/`CREATE_CAROUSEL` em `e2e/helpers.ts` + specs atualizadas
+  - [x] 2.4.3 (#3) `BackgroundMirrorToolbar` no dock; card "Opções do Fundo" removido
+  - [x] 2.4.4 (#6) 12 labels padronizados em `DECOR_OVERRIDES` (ids preservados)
+  - [x] 2.4.5 (#8) `scrollbar-color`/`scrollbar-width` + `summary:focus-visible`
+  - [x] 2.4.6 (#9) `renameActiveDraft()` + `<h1>` editável inline
+  - [x] 2.4.7 (#13) `enableAllFinishes()` (um undo) + prévias em `<details>`
+  - [x] 2.4.8 Regressões em `e2e/regressoes.spec.ts` e `editorStore.test.ts`
+- [x] 2.5 Verificação final (10/11/2026): `typecheck` OK, **159 testes** unitários, `build` OK, `e2e` **63 passed / 3 skipped** (66 testes)
+  - Atenção: `playwright.config.ts` serve `dist/` na 4173 — rodar `npm run build`
+    antes de `npm run e2e`.

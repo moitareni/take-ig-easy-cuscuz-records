@@ -46,9 +46,18 @@ const SOURCES = {
  * - fullSheet: folha inteira 1080×1440 (não recorta transparência, nasce centralizada).
  */
 const DECOR_OVERRIDES = {
-  'luz-indireta': { id: 'grade', label: 'Grade', blend: 'soft-light', fullSheet: true }, // README do ENFEITE
-  sobrepor: { id: 'sobrepor', label: 'Sobrepor', fullSheet: true },
-  'papel-divisao': { id: 'papel-divisao', label: 'Papel divisão', blend: 'divide' }, // README do GRAFISMOS
+  flores: { label: 'Arabesco floral' },
+  'folhas-1': { label: 'Folhagem rendada' },
+  'folhas-2': { label: 'Vinha vertical' },
+  'ondas-1': { label: 'Onda de canto' },
+  'ondas-2': { label: 'Traço ondulado' },
+  'luz-indireta': { id: 'grade', label: 'Trama amarela', blend: 'soft-light', fullSheet: true }, // README do ENFEITE
+  sobrepor: { id: 'sobrepor', label: 'Xadrez amarelo', fullSheet: true },
+  chain: { label: 'Faixa de espinhos' },
+  esqueleto: { label: 'Esqueleto solar' },
+  mp3player: { label: 'Tocador retrô' },
+  'papel-divisao': { id: 'papel-divisao', label: 'Fita de papel verde', blend: 'divide' }, // README do GRAFISMOS
+  janela: { label: 'Janela retrô' },
 };
 
 const report = [];
@@ -255,7 +264,6 @@ async function paperTexture() {
 const kb = (n) => `${(n / 1024).toFixed(0).padStart(7)} KB`;
 
 async function main() {
-  await fs.rm(OUT, { recursive: true, force: true });
   await fs.mkdir(path.join(OUT, 'thumbs'), { recursive: true });
 
   const manifest = {

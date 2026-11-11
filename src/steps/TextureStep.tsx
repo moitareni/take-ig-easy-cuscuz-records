@@ -1,5 +1,5 @@
-import React from 'react';
-import { Frame, Layers, Newspaper } from 'lucide-react';
+import React, { useState } from 'react';
+import { ChevronDown, Frame, Layers, Newspaper, Sparkles } from 'lucide-react';
 import {
   BORDER_TEXTURE_OPACITY_MAX,
   BORDER_TEXTURE_OPACITY_MIN,
@@ -13,19 +13,28 @@ import {
 import { getBorderTexture, getPaperTexture } from '../assets';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
+import { PreviewImage } from '../components/ui/PreviewImage';
 import { Segmented } from '../components/ui/Segmented';
 import { Slider } from '../components/ui/Slider';
+import { announceCanvasActivity } from '../lib/useImage';
 import { useEditor } from '../store/editorStore';
 import styles from './StepPanel.module.css';
 
 export const TextureStep: React.FC = () => {
+  const [paperPreviewOpen, setPaperPreviewOpen] = useState(false);
+  const [borderPreviewOpen, setBorderPreviewOpen] = useState(false);
+
   const finish = useEditor((s) => s.finish);
   const setPaper = useEditor((s) => s.setPaper);
   const setBorderTexture = useEditor((s) => s.setBorderTexture);
   const setGrain = useEditor((s) => s.setGrain);
+  const enableAllFinishes = useEditor((s) => s.enableAllFinishes);
   const resetFinish = useEditor((s) => s.resetFinish);
   const paper = getPaperTexture();
   const border = getBorderTexture();
+
+  const allEnabled =
+    finish.paper.enabled && finish.borderTexture.enabled && finish.grain.enabled;
 
   return (
     <div className={styles.container}>
@@ -36,28 +45,34 @@ export const TextureStep: React.FC = () => {
         </p>
       </div>
 
+      <Button
+        variant="secondary"
+        size="sm"
+        fullWidth
+        icon={<Sparkles size={16} strokeWidth={2.5} />}
+        disabled={allEnabled}
+        onClick={() => {
+          announceCanvasActivity('texture', 'Aplicando textura... ✨', paper?.src);
+          enableAllFinishes();
+        }}
+      >
+        Ativar todas
+      </Button>
+
       {/* Papel Amassado em overlay */}
       <Card title="Papel Amassado" subtitle="Opcional 🌽 desligado por padrão (sugestão: 40%)">
-        {paper && (
-          <img
-            src={paper.thumb}
-            alt="Prévia do papel amassado"
-            style={{
-              width: '100%',
-              aspectRatio: '3 / 4',
-              objectFit: 'cover',
-              borderRadius: '8px',
-              border: '3px solid var(--c-border)',
-            }}
-          />
-        )}
         <div className={styles.section}>
           <Button
             variant={finish.paper.enabled ? 'primary' : 'secondary'}
             size="sm"
             fullWidth
             icon={<Newspaper size={16} strokeWidth={2.5} />}
-            onClick={() => setPaper({ enabled: !finish.paper.enabled })}
+            onClick={() => {
+              if (!finish.paper.enabled) {
+                announceCanvasActivity('texture', 'Aplicando textura... ✨', paper?.src);
+              }
+              setPaper({ enabled: !finish.paper.enabled });
+            }}
           >
             {finish.paper.enabled ? 'Papel (Ligado)' : 'Papel (Desligado)'}
           </Button>
@@ -69,31 +84,44 @@ export const TextureStep: React.FC = () => {
             unit="%"
             onChange={(v) => setPaper({ opacity: v, enabled: true })}
           />
+          {paper && (
+            <details
+              className={styles.textureDetails}
+              onToggle={(event) => setPaperPreviewOpen(event.currentTarget.open)}
+            >
+              <summary className={styles.textureSummary}>
+                <span>Ver prévia da textura</span>
+                <ChevronDown size={16} strokeWidth={2.5} className={styles.textureChevron} />
+              </summary>
+              {paperPreviewOpen && (
+                <PreviewImage
+                  src={paper.thumb}
+                  alt="Prévia do papel amassado"
+                  className={styles.texturePreview}
+                  imgClassName={styles.texturePreviewImage}
+                  style={{ height: 'auto' }}
+                  loadingSize="full"
+                />
+              )}
+            </details>
+          )}
         </div>
       </Card>
 
       {/* Textura de borda (BORDER) em overlay */}
       <Card title="Textura de Borda" subtitle="Opcional 🌽 mesclagem overlay (sugestão: 40%)">
-        {border && (
-          <img
-            src={border.src}
-            alt="Prévia da textura de borda"
-            style={{
-              width: '100%',
-              aspectRatio: '3 / 4',
-              objectFit: 'cover',
-              borderRadius: '8px',
-              border: '3px solid var(--c-border)',
-            }}
-          />
-        )}
         <div className={styles.section}>
           <Button
             variant={finish.borderTexture.enabled ? 'primary' : 'secondary'}
             size="sm"
             fullWidth
             icon={<Frame size={16} strokeWidth={2.5} />}
-            onClick={() => setBorderTexture({ enabled: !finish.borderTexture.enabled })}
+            onClick={() => {
+              if (!finish.borderTexture.enabled) {
+                announceCanvasActivity('texture', 'Aplicando textura... ✨', border?.src);
+              }
+              setBorderTexture({ enabled: !finish.borderTexture.enabled });
+            }}
           >
             {finish.borderTexture.enabled ? 'Borda (Ligado)' : 'Borda (Desligado)'}
           </Button>
@@ -105,6 +133,27 @@ export const TextureStep: React.FC = () => {
             unit="%"
             onChange={(v) => setBorderTexture({ opacity: v, enabled: true })}
           />
+          {border && (
+            <details
+              className={styles.textureDetails}
+              onToggle={(event) => setBorderPreviewOpen(event.currentTarget.open)}
+            >
+              <summary className={styles.textureSummary}>
+                <span>Ver prévia da textura</span>
+                <ChevronDown size={16} strokeWidth={2.5} className={styles.textureChevron} />
+              </summary>
+              {borderPreviewOpen && (
+                <PreviewImage
+                  src={border.src}
+                  alt="Prévia da textura de borda"
+                  className={styles.texturePreview}
+                  imgClassName={styles.texturePreviewImage}
+                  style={{ height: 'auto' }}
+                  loadingSize="full"
+                />
+              )}
+            </details>
+          )}
         </div>
       </Card>
 

@@ -1,8 +1,10 @@
 import React from 'react';
 import { Trash2 } from 'lucide-react';
+import { getLogo } from '../assets';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { Segmented } from '../components/ui/Segmented';
+import { announceCanvasActivity, preloadImage } from '../lib/useImage';
 import { useEditor } from '../store/editorStore';
 import type { LogoSize } from '../brand/brand';
 import type { LogoEl } from '../types';
@@ -14,6 +16,12 @@ export const LogoStep: React.FC = () => {
   const placeLogo = useEditor((s) => s.placeLogo);
   const removeElement = useEditor((s) => s.removeElement);
   const logo = useEditor((s) => s.doc.elements.find((e): e is LogoEl => e.kind === 'logo') ?? null);
+
+  const handleSelectLogo = (variant: LogoEl['variant']) => {
+    const asset = getLogo(variant);
+    announceCanvasActivity('logo', 'Carimbando a logo... 🏷️', asset?.src);
+    addLogo(variant);
+  };
 
   return (
     <div className={styles.container}>
@@ -30,14 +38,16 @@ export const LogoStep: React.FC = () => {
             <Button
               variant="secondary"
               size="md"
-              onClick={() => addLogo('paper')}
+              onMouseEnter={() => void preloadImage(getLogo('paper')?.src)}
+              onClick={() => handleSelectLogo('paper')}
             >
               Adicionar Logo com Papel
             </Button>
             <Button
               variant="secondary"
               size="md"
-              onClick={() => addLogo('clean')}
+              onMouseEnter={() => void preloadImage(getLogo('clean')?.src)}
+              onClick={() => handleSelectLogo('clean')}
             >
               Adicionar Logo Sem Fundo
             </Button>
@@ -66,7 +76,7 @@ export const LogoStep: React.FC = () => {
                 { value: 'clean', label: 'Sem Fundo' },
               ]}
               value={logo.variant}
-              onChange={(variant) => addLogo(variant)}
+              onChange={(variant) => handleSelectLogo(variant)}
             />
           </div>
 

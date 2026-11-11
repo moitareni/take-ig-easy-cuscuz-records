@@ -75,3 +75,57 @@
 .textarea:focus {
   border-color: var(--c-verde);
 }
+
+.textureDetails {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.textureSummary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 2px solid var(--c-border);
+  border-radius: var(--radius-sm);
+  background-color: var(--c-creme);
+  box-shadow: 0 2px 0 var(--c-border);
+  font-family: var(--font-body);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--c-text-main);
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+  transition: background-color var(--duration-fast) ease;
+}
+
+.textureSummary::-webkit-details-marker {
+  display: none;
+}
+
+.textureSummary:hover {
+  background-color: var(--c-amarelo);
+}
+
+.textureChevron {
+  flex: none;
+  transition: transform var(--duration-fast) ease;
+}
+
+.textureDetails[open] .textureChevron {
+  transform: rotate(180deg);
+}
+
+.texturePreview {
+  aspect-ratio: 3 / 4;
+  border: 3px solid var(--c-border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-sm);
+}
+
+.texturePreviewImage {
+  object-fit: cover;
+}

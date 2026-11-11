@@ -118,6 +118,74 @@
   color: var(--c-text-main);
 }
 
+/* Feedback visual na folha ao adicionar/trocar fundo, enfeite, foto, logo ou textura */
+.canvasBusyOverlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  border-radius: calc(var(--radius-sm) - 4px);
+  z-index: 25;
+  pointer-events: none;
+  transition: background-color var(--duration-fast) ease;
+}
+
+.canvasBusyOverlayVeil {
+  background-color: rgba(247, 235, 205, 0.42);
+  backdrop-filter: blur(1.5px);
+}
+
+.canvasBusyBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 90%;
+  padding: 10px 18px;
+  border: 3px solid var(--c-border);
+  border-radius: var(--radius-pill);
+  background-color: var(--c-surface);
+  box-shadow: var(--shadow-md);
+  animation: cutePop 0.2s var(--ease-bounce);
+}
+
+.canvasBusySpinner {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 3px solid var(--c-border);
+  border-top-color: var(--c-amarelo);
+  border-right-color: var(--c-barro);
+  animation: canvasBusySpin var(--duration-loading) linear infinite;
+}
+
+.canvasBusyLabel {
+  font-family: var(--font-headline);
+  font-weight: 900;
+  font-size: 17px;
+  line-height: 1.1;
+  letter-spacing: 0.4px;
+  color: var(--c-text-main);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@keyframes canvasBusySpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .canvasBusySpinner {
+    animation-duration: 1.6s !important;
+    animation-iteration-count: infinite !important;
+  }
+}
+
 @media (max-width: 640px) {
   .container {
     padding: 12px;

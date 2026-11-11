@@ -1,5 +1,13 @@
 import { createExternalStore } from './createExternalStore';
 import {
+  IMAGES_STORE,
+  getAllFromStore,
+  openEditorDb,
+  putInStore,
+  requestAsPromise,
+  transactionDone,
+} from './drafts/db';
+import {
   IMAGE_THUMB_SIDE,
   IMAGE_WEBP_QUALITY,
   downscaleDimensions,
@@ -26,7 +34,7 @@ export interface UserImageEntry {
   height: number;
 }
 
-interface StoredImage {
+export interface StoredImage {
   id: string;
   blob: Blob;
   thumb: Blob;
@@ -36,21 +44,14 @@ interface StoredImage {
   createdAt: number;
 }
 
-const DB_NAME = 'cuscuz-insta-kit';
-const DB_VERSION = 1;
-const STORE = 'images';
-
 // ---------------------------------------------------------------- registry
 
 const entries = new Map<string, UserImageEntry>();
-/** IDs que existem no IndexedDB (separado dos da sessão para o GC não revogar URL de imagem só-em-sessão). */
-const storedIds = new Set<string>();
 /**
  * O Map é mutável in-place (add/remove mutam sem substituir o todo), então a
  * reatividade usa uma store de versão: cada emit() bumpa o número e re-renderiza.
  */
 const registryVersion = createExternalStore(0);
-let hydrated = false;
 
 function emit() {
   registryVersion.set((v) => v + 1);
@@ -66,24 +67,24 @@ export function useUserImage(imageId: string | null): UserImageEntry | null {
   return getEntry(imageId);
 }
 
-function addEntry(entry: UserImageEntry, stored: boolean) {
+function addEntry(entry: UserImageEntry) {
   entries.set(entry.id, entry);
-  if (stored) storedIds.add(entry.id);
   emit();
 }
 
 async function removeEntry(id: string) {
   const entry = entries.get(id);
   entries.delete(id);
-  storedIds.delete(id);
   if (entry) {
     URL.revokeObjectURL(entry.url);
     URL.revokeObjectURL(entry.thumbUrl);
   }
   emit();
   try {
-    const db = await openDb();
-    await requestAsPromise(db.transaction(STORE, 'readwrite').objectStore(STORE).delete(id));
+    const db = await openEditorDb();
+    const tx = db.transaction(IMAGES_STORE, 'readwrite');
+    tx.objectStore(IMAGES_STORE).delete(id);
+    await transactionDone(tx);
   } catch {
     // Banco indisponível: a URL já foi revogada; segue o jogo.
   }
@@ -91,66 +92,53 @@ async function removeEntry(id: string) {
 
 // ------------------------------------------------------------ IndexedDB puro
 
-let dbPromise: Promise<IDBDatabase> | null = null;
-
-function openDb(): Promise<IDBDatabase> {
-  if (dbPromise) return dbPromise;
-  dbPromise = new Promise<IDBDatabase>((resolve, reject) => {
-    if (typeof indexedDB === 'undefined') {
-      reject(new Error('indexeddb-indisponivel'));
-      return;
-    }
-    const req = indexedDB.open(DB_NAME, DB_VERSION);
-    req.onupgradeneeded = () => {
-      const db = req.result;
-      if (!db.objectStoreNames.contains(STORE)) {
-        db.createObjectStore(STORE, { keyPath: 'id' });
-      }
-    };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error ?? new Error('indexeddb-erro'));
-  });
-  dbPromise.catch(() => {
-    dbPromise = null;
-  });
-  return dbPromise;
-}
-
-function requestAsPromise<T>(req: IDBRequest<T>): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error ?? new Error('indexeddb-erro'));
-  });
-}
-
 async function getAllStored(): Promise<StoredImage[]> {
-  const db = await openDb();
-  return requestAsPromise(db.transaction(STORE).objectStore(STORE).getAll() as IDBRequest<StoredImage[]>);
+  return getAllFromStore<StoredImage>(IMAGES_STORE);
 }
 
 async function putStored(rec: StoredImage): Promise<void> {
-  const db = await openDb();
-  await requestAsPromise(db.transaction(STORE, 'readwrite').objectStore(STORE).put(rec));
+  await putInStore(IMAGES_STORE, rec);
 }
 
-// --------------------------------------------------------------- hidratação
+// ------------------------------------------------- carregamento sob demanda
+
+/** Só as chaves: a home e o boot não precisam baixar o acervo de fotos inteiro. */
+export async function getStoredImageIds(): Promise<Set<string>> {
+  try {
+    const db = await openEditorDb();
+    const keys = await requestAsPromise(
+      db.transaction(IMAGES_STORE).objectStore(IMAGES_STORE).getAllKeys(),
+    );
+    return new Set(keys.map((key) => String(key)));
+  } catch {
+    return new Set();
+  }
+}
 
 /**
- * Carrega em memória todas as imagens gravadas no IndexedDB.
- * Devolve os IDs disponíveis para o doc reconcilar os elementos.
+ * Carrega para o registry apenas as imagens referenciadas pelo rascunho aberto.
+ * Chamadas concorrentes são inofensivas: o registro já existente é preservado.
  */
-export async function hydrateUserImages(): Promise<Set<string>> {
+export async function loadUserImages(ids: Iterable<string>): Promise<void> {
+  const missing = [...new Set(ids)].filter((id) => !entries.has(id));
+  if (missing.length === 0) return;
+
   try {
-    const all = await getAllStored();
-    for (const rec of all) {
-      addEntry(storedToEntry(rec), true);
+    const db = await openEditorDb();
+    const tx = db.transaction(IMAGES_STORE, 'readonly');
+    const done = transactionDone(tx);
+    const store = tx.objectStore(IMAGES_STORE);
+    const records = await Promise.all(
+      missing.map((id) => requestAsPromise(store.get(id) as IDBRequest<StoredImage | undefined>)),
+    );
+    await done;
+    for (const rec of records) {
+      if (!rec || entries.has(rec.id)) continue;
+      addEntry(storedToEntry(rec));
     }
-    hydrated = true;
   } catch {
-    // IndexedDB bloqueado/ausente: modo só-em-sessão.
-    hydrated = false;
+    // Sem banco: os elementos sem blob serão reconciliados ao abrir o rascunho.
   }
-  return new Set(entries.keys());
 }
 
 function storedToEntry(rec: StoredImage): UserImageEntry {
@@ -165,16 +153,29 @@ function storedToEntry(rec: StoredImage): UserImageEntry {
 }
 
 /**
- * Remove do banco e da memória as imagens que o doc atual não referencia.
- * Só mexe em registros vindos do IndexedDB: imagens só-em-sessão ficam
- * intactas (o undo pode trazê-las de volta).
+ * Remove do banco e da memória as imagens que nenhum rascunho referencia.
+ * O `keep` DEVE ser a união de todos os rascunhos (imagens e `cutFrom`),
+ * nunca apenas o rascunho ativo. Chamar só depois da migração concluída.
  */
 export async function collectGarbageImages(keep: Set<string>): Promise<void> {
-  if (!hydrated) return;
-  const orphans = [...storedIds].filter((id) => !keep.has(id));
+  let keys: IDBValidKey[];
+  try {
+    const db = await openEditorDb();
+    keys = await requestAsPromise(
+      db.transaction(IMAGES_STORE).objectStore(IMAGES_STORE).getAllKeys(),
+    );
+  } catch {
+    return;
+  }
+  const orphans = keys.map((key) => String(key)).filter((id) => !keep.has(id));
   for (const id of orphans) {
     await removeEntry(id);
   }
+}
+
+/** Acervo completo, usado só pelo backup (não hidrata o editor). */
+export async function getAllStoredImages(): Promise<StoredImage[]> {
+  return getAllStored();
 }
 
 // ------------------------------------------------------------- importação
@@ -226,7 +227,7 @@ export async function registerProcessedImage(
     } catch {
       persisted = false;
     }
-    addEntry(entry, persisted);
+    addEntry(entry);
     result = { entry, persisted };
   } finally {
     decoded.close();
@@ -275,7 +276,7 @@ export async function importUserImage(file: File): Promise<ImportedImage> {
     } catch {
       persisted = false;
     }
-    addEntry(entry, persisted);
+    addEntry(entry);
     result = { entry, persisted };
   } finally {
     decoded.close();

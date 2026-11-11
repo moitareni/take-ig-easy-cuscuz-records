@@ -1,7 +1,5 @@
 import { useMemo } from 'react';
 import { create } from 'zustand';
-import { createJSONStorage, persist } from 'zustand/middleware';
-import { debouncedLocalStorage } from '../lib/storage';
 import { temporal } from 'zundo';
 import {
   BORDER_TEXTURE_OPACITY_DEFAULT,
@@ -61,10 +59,25 @@ import {
 /** Metadados de uma imagem importada (o blob vive no userImages/IndexedDB). */
 export type { ImageMeta };
 
+export interface ToastAction {
+  label: string;
+  onClick: () => void;
+}
+
 export interface Toast {
   id: number;
   kind: 'error' | 'success' | 'info';
   message: string;
+  /** Ação opcional (ex.: "Desfazer" após excluir). */
+  action?: ToastAction;
+  /** Tempo visível em ms. Sem ação, o padrão do componente é 4 s. */
+  duration?: number;
+}
+
+export interface ToastOptions {
+  duration?: number;
+  actionLabel?: string;
+  onAction?: () => void;
 }
 
 export type Corner = 'tl' | 'tr' | 'bl' | 'br';
@@ -141,7 +154,7 @@ export interface EditorState {
   selectMany: (ids: string[]) => void;
   setEditing: (id: string | null) => void;
   setGuides: (g: { v: boolean; h: boolean }) => void;
-  showToast: (kind: Toast['kind'], message: string) => void;
+  showToast: (kind: Toast['kind'], message: string, options?: ToastOptions) => void;
   dismissToast: () => void;
   toggleGuidesVisible: () => void;
   setGuideLayer: (patch: Partial<Omit<LayoutGuides, 'margin' | 'visible'>>) => void;
@@ -150,6 +163,8 @@ export interface EditorState {
   setPaper: (patch: Partial<PaperFinish>) => void;
   setGrain: (patch: Partial<GrainFinish>) => void;
   setBorderTexture: (patch: Partial<BorderTextureFinish>) => void;
+  /** Liga os três acabamentos num único passo de undo, preservando opacidades e tamanho do grão. */
+  enableAllFinishes: () => void;
   /** Volta ao acabamento padrão (papel, granulado e textura de borda desligados). */
   resetFinish: () => void;
   /** Define o zoom prendendo nos limites 25%–400%. */
@@ -219,12 +234,21 @@ function freeCenter(elements: El[], x = POST_W / 2, y = POST_H / 2) {
   return { x: cx, y: cy };
 }
 
-function logoPlacement(el: LogoEl, place: LogoPlace, format: PostFormat = '3:4') {
+export function effectiveLogoMargin(layoutGuides: LayoutGuides): number {
+  return layoutGuides.visible && layoutGuides.showMargins ? layoutGuides.margin : 0;
+}
+
+function logoPlacement(
+  el: LogoEl,
+  place: LogoPlace,
+  format: PostFormat = '3:4',
+  margin: number = LOGO_MARGIN,
+) {
   const { width: postW, height: postH } = getPostDimensions(format);
   const asset = getLogo(el.variant);
   const w = asset.width * el.scale;
   const h = asset.height * el.scale;
-  const m = LOGO_MARGIN;
+  const m = margin;
   const left = m + w / 2;
   const right = postW - m - w / 2;
   const top = m + h / 2;
@@ -269,8 +293,7 @@ export function sanitize(doc: Doc | undefined): Doc {
 
 export const useEditor = create<EditorState>()(
   temporal(
-    persist(
-      (set, get) => {
+    (set, get) => {
         const setDoc = (fn: (doc: Doc) => Doc) => set((s) => ({ doc: fn(s.doc) }));
         const mapEl = (id: string, fn: (e: El) => El) =>
           setDoc((d) => ({ ...d, elements: d.elements.map((e) => (e.id === id ? fn(e) : e)) }));
@@ -325,7 +348,19 @@ export const useEditor = create<EditorState>()(
             const cur = get().guides;
             if (cur.v !== g.v || cur.h !== g.h) set({ guides: g });
           },
-          showToast: (kind, message) => set({ toast: { id: Date.now() + Math.random(), kind, message } }),
+          showToast: (kind, message, options) =>
+            set({
+              toast: {
+                id: Date.now() + Math.random(),
+                kind,
+                message,
+                action:
+                  options?.actionLabel && options.onAction
+                    ? { label: options.actionLabel, onClick: options.onAction }
+                    : undefined,
+                duration: options?.duration,
+              },
+            }),
           dismissToast: () => set({ toast: null }),
           toggleGuidesVisible: () =>
             set((s) => ({ layoutGuides: { ...s.layoutGuides, visible: !s.layoutGuides.visible } })),
@@ -338,6 +373,19 @@ export const useEditor = create<EditorState>()(
               },
             })),
           setGuidesVisible: (visible) => set((s) => ({ layoutGuides: { ...s.layoutGuides, visible } })),
+          enableAllFinishes: () =>
+            set((s) => {
+              if (s.finish.paper.enabled && s.finish.grain.enabled && s.finish.borderTexture.enabled) {
+                return {};
+              }
+              return {
+                finish: {
+                  paper: { ...s.finish.paper, enabled: true },
+                  grain: { ...s.finish.grain, enabled: true },
+                  borderTexture: { ...s.finish.borderTexture, enabled: true },
+                },
+              };
+            }),
           resetFinish: () => set({ finish: defaultFinish() }),
           setZoom: (factor) => {
             const next = clampZoom(factor);
@@ -456,7 +504,8 @@ export const useEditor = create<EditorState>()(
             }
             const scale = LOGO_SIZES.M / getLogo(variant).width;
             const el: LogoEl = { id: uid(), kind: 'logo', variant, x: 0, y: 0, rotation: 0, scale };
-            Object.assign(el, logoPlacement(el, 'bc', get().doc.format));
+            const margin = effectiveLogoMargin(get().layoutGuides);
+            Object.assign(el, logoPlacement(el, 'bc', get().doc.format, margin));
             setDoc((d) => ({ ...d, elements: [...d.elements, el] }));
             set(selection([el.id]));
           },
@@ -470,7 +519,8 @@ export const useEditor = create<EditorState>()(
           placeLogo: (place) => {
             const logo = get().doc.elements.find((e): e is LogoEl => e.kind === 'logo');
             if (!logo) return;
-            mapEl(logo.id, (e) => ({ ...e, ...logoPlacement(logo, place, get().doc.format) }));
+            const margin = effectiveLogoMargin(get().layoutGuides);
+            mapEl(logo.id, (e) => ({ ...e, ...logoPlacement(logo, place, get().doc.format, margin) }));
             set(selection([logo.id]));
           },
 
@@ -661,22 +711,7 @@ export const useEditor = create<EditorState>()(
 
           reset: () => set({ doc: emptyDoc(), finish: defaultFinish(), ...selection([]), editingId: null, step: 0 }),
         };
-      },
-      {
-        name: 'cuscuz-insta-kit:rascunho',
-        version: 1,
-        storage: createJSONStorage(() => debouncedLocalStorage()),
-        partialize: (s) => ({ doc: s.doc, finish: s.finish }),
-        merge: (persisted, current) => {
-          const p = persisted as { doc?: Doc; finish?: FinishState } | undefined;
-          return { ...current, doc: sanitize(p?.doc), finish: sanitizeFinish(p?.finish) };
-        },
-        onRehydrateStorage: () => () => {
-          // O histórico começa depois do rascunho restaurado.
-          setTimeout(() => useEditor.temporal.getState().clear(), 0);
-        },
-      },
-    ),
+    },
     {
       limit: 50,
       partialize: (s) => ({ doc: s.doc, finish: s.finish }),

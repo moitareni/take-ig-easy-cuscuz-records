@@ -7,7 +7,18 @@ Este documento estabelece o contexto do negócio, regras inquebráveis de identi
 ## 1. Contexto do Projeto
 
 O **Cuscuz Records Insta Kit** é uma aplicação web estática criada sob medida para a gravadora independente **Cuscuz Records**.
-O objetivo é permitir que o cliente crie de forma prática, rápida e intuitiva posts para o feed do Instagram nos formatos **Vertical 3:4 (1080×1440)** (padrão), **Horizontal 4:3 (1440×1080)** e **Quadrado 1:1 (1080×1080)**, mantendo 100% de consistência com a identidade visual da marca.
+O objetivo é permitir que o cliente crie de forma prática, rápida e intuitiva posts para o feed do Instagram nos formatos **Vertical 3:4 (1080×1440)** (padrão), **Horizontal 4:3 (1440×1080)** e **Quadrado 1:1 (1080×1080)**, mantendo 100% de consistência com a identidade visual da marca. Também é possível criar **carrosséis** de até 10 slides, exportados em ZIP.
+
+> **Estado atual — release v3 "Meus rascunhos" (10/11/2026).** A aplicação é 100%
+> estática, sem back-end, e **abre sempre na home "Meus rascunhos"**
+> (`src/screens/HomeScreen.tsx`); o editor só existe com um rascunho ativo. Todos os
+> posts — únicos ou carrosséis — são rascunhos persistidos em **IndexedDB**
+> (`src/lib/drafts/`, schema v2) com autosave, capa WebP, backup em ZIP e bloqueio por
+> aba. `useEditor` e `useCarousel` são stores de sessão **em memória** (não usam mais
+> `persist`/`localStorage`); as chaves antigas `cuscuz-insta-kit:rascunho` e
+> `cuscuz-insta-kit:carrossel` são apenas migradas e mantidas como rollback. As specs
+> em `.kiro/specs/` registram a implementação de base e trazem, no topo de cada
+> arquivo, uma **Revisão** com o que prevalece. **Este `AGENTS.md` é a fonte de verdade.**
 
 ### 1.1 Usuário-alvo e filosofia de experiência (visão do produto)
 
@@ -60,7 +71,8 @@ Princípios de UX derivados dessa visão (critério para qualquer mudança nesta
 - **Deslize e enquadramento em 1:1**:
   - Exclusivamente no **Passo 1 (Fundo, `step === 0`)**, o usuário pode deslizar o fundo verticalmente (arrastando direto na folha ou usando o slider e botões rápidos "Topo", "Centro" e "Base").
   - **Ao sair da aba Fundo (`step !== 0`)**, o deslize é estritamente **desativado e travado** (`draggable={false}`, `listening={false}`), garantindo que o fundo nunca seja deslocado por engano enquanto o usuário manipula enfeites, fotos ou textos.
-- **Espelhamento centralizado**: o fundo pode ser espelhado horizontalmente (`↔`) e verticalmente (`↕`) pelo usuário no Passo 1, pivotado perfeitamente no centro sem vazar margens.
+- **Espelhamento centralizado**: o fundo pode ser espelhado horizontalmente (`↔`) e verticalmente (`↕`) pelo usuário no Passo 1, pivotado perfeitamente no centro sem vazar margens. Os controles ficam na **`BackgroundMirrorToolbar` do dock direito** (`aria-label` "Espelhar fundo ↔" / "Espelhar fundo ↕", estado `active`), visíveis apenas quando `step === 0`, há fundo escolhido e nenhum elemento selecionado. O antigo card "Opções do Fundo" foi removido; o corte 1:1 permanece como bloco inline no painel ("Corte vertical", "Topo", "Centro", "Base").
+- **Formato no carrossel**: definido na criação e **imutável**. O seletor "Formato do post" só existe no Passo 1 do **Post único**; no carrossel a informação aparece como leitura no Header (`FormatGlyph` + `POST_FORMATS`). `handleFormatChange` mantém um guard com toast como defesa em profundidade.
 
 ### 2.2 Paleta de Cores Oficial
 Somente as seguintes cores podem ser utilizadas na arte e nos textos:
@@ -92,26 +104,32 @@ Quando o "Efeito da Marca" está ativo em títulos:
 - Caso o usuário tente aumentar o texto acima do limite (seja pelo slider ou redimensionando pela alça), o sistema trava no valor máximo permitido e emite a notificação amigável:
   > *"Opa! O texto não pode ficar maior que o título 🙈"*
 - Da mesma forma, títulos não podem ser encolhidos abaixo do maior texto existente.
+- **Tetos por estilo** (`src/brand/brand.ts`): `FONT_SIZE_MIN = 16`, `BODY_FONT_SIZE_MAX = 320` (corpo), `HEADING_FONT_SIZE_MAX = 4000` (títulos/destaques). O teto de 4000 px é **técnico** (protege canvas/export), não um limite de design — a usuária pode aumentar o título livremente até ele. Corpo com títulos grandes continua travado em 320 px. Implementado em `textRules.ts` (`textSizeLimits`/`clampTextSize`) e `multiSelect.ts` (`groupScaleBounds` com `maxCap`, `enforceTextRule`). O slider de `TextStep.tsx` usa `limits.max` finito.
 
 ### 2.7 Logo e Enfeites / Grafismos
 - **Enfeites e Grafismos são opcionais**: o usuário pode adicionar quantos desejar ou nenhum.
   - **Enfeites de fundo**: florais, folhas, ondas e acabamentos da pasta `ENFEITE/` (incluindo `grade` com modo `soft-light` e `sobrepor` cobrindo a folha).
   - **Grafismos**: elementos da pasta `GRAFISMOS/` (`chain`, `esqueleto`, `mp3player`, e `papel-divisao` com modo de mesclagem `divide`).
   - **Molduras**: moldura retrô da pasta `JANELA/`, disponível no Passo 2 para emoldurar fotos e composições.
-- **Logo é opcional**: só aparece se o usuário decidir adicionar. Apenas uma logo é permitida por post, podendo alternar entre "Com papel" e "Sem fundo".
+- **Logo é opcional**: só aparece se o usuário decidir adicionar. Apenas uma logo é permitida por post, podendo alternar entre "Com papel" e "Sem fundo". Os presets de posição da logo (`tl`, `tr`, `bl`, `br`, `tc`, `bc`) seguem dinamicamente a margem ativa das guias de layout (`layoutGuides.margin`, ex.: 32, 56, 80, 100); quando as guias estão ocultas (`visible = false`) ou a guia de margens está desativada (`showMargins = false`), a margem efetiva é `0` (a logo cola na borda da folha).
+- **Nomes padronizados dos enfeites** (Leva 2): os 12 `label`s são definidos em `DECOR_OVERRIDES` (`scripts/build-assets.mjs`) e gravados em `src/assets-manifest.json`. Todos em Title Case, sem CAIXA ALTA e sem sufixo numérico nu: `Arabesco floral`, `Folhagem rendada`, `Vinha vertical`, `Onda de canto`, `Traço ondulado`, `Trama amarela`, `Xadrez amarelo`, `Faixa de espinhos`, `Esqueleto solar`, `Tocador retrô`, `Fita de papel verde`, `Janela retrô`.
+  - **REGRA INEGOCIÁVEL:** os **`id`s são imutáveis** (`flores`, `folhas-1`, `folhas-2`, `ondas-1`, `ondas-2`, `grade`, `sobrepor`, `chain`, `esqueleto`, `mp3player`, `papel-divisao`, `janela`). Estão gravados nos `Doc` dos rascunhos; `sanitize()` descarta qualquer enfeite com `id` desconhecido. Só o `label` pode mudar. `DECORATION_ANCHORS` (`brand.ts`) é chaveado por `id` e permanece intacto. Rodar `npm run assets` após alterar o mapa; conferir que nenhum WebP mudou de hash.
 
 ### 2.8 Textura Final (opcional, desligada por padrão)
 - Etapa **6. Textura** com três acabamentos independentes:
   - **Papel amassado**: overlay da textura `TEXTURE/` (`public/brand/papel-textura.webp`) sobre a folha, com opacidade regulável (sugestão: 40%).
   - **Textura de borda**: overlay da textura `BORDER/TEXTURA-BORDA.png` (`public/brand/textura-borda.webp`) sobre a folha, com opacidade regulável (sugestão: 40%).
   - **Granulado**: grão monocromático com distribuição gaussiana, gerado por RNG **com seed** (`mulberry32`) para o grão ficar **idêntico no preview e no export**.
-- Todos vêm com checagem desligada; nunca devem ser aplicados automaticamente na criação de um post.
+- Todos vêm com checagem desligada; nunca devem ser aplicados automaticamente na criação de um post (`FINISH_ENABLED_DEFAULT = false`). Isso continua valendo com o botão **"Ativar todas"** — ele é uma ação **explícita** da usuária.
+- **"Ativar todas"** (Leva 2): `enableAllFinishes()` em `editorStore.ts` liga os três em **um único `set`** (= um único passo de undo), preservando opacidades/intensidade; fica desabilitado quando os três já estão ligados. `resetFinish()` continua como inverso (e também zera os valores). No carrossel, `finish` é por slide e o subscriber de `main.tsx` sincroniza só o Slide Ativo.
+- **Prévias sob demanda** (Leva 2): as imagens de papel amassado e textura de borda ficam fechadas em `<details>/<summary>` ("Ver prévia da textura"); o `PreviewImage` só é montado quando aberto. Granulado não tem imagem, logo não tem dropdown. `summary:focus-visible` recebe o outline verde em `global.css`.
+- **Rótulos dos toggles são contrato de teste**: `Papel (Desligado|Ligado)`, `Borda (Desligado|Ligado)`, `Grain (Desligado|Ligado)` — `e2e/flow.spec.ts` depende deles.
 
 ### 2.9 Imagens do Usuário (etapa 3, opcional)
 - **Limite total: até `IMAGE_MAX_COUNT` (5) imagens por post**, contando duplicatas; a 6ª é bloqueada com toast amigável.
 - Entrada por seletor de arquivos ou **arrastar e soltar** no painel e direto **na folha** (a imagem nasce no ponto do drop, posicionada nas coordenadas da folha ativa).
 - Mesmas transformações dos outros elementos: drag, resize proporcional, rotação, flip ↔/↕, snap, camadas, duplicar (respeita o limite), apagar e undo/redo.
-- **Persistência**: só os metadados (imageId, dimensões, transformações) vão no doc/localStorage; o **binário processado + miniatura ficam no IndexedDB** (`cuscuz-insta-kit` / store `images`) — **nunca** guardar foto em base64 no localStorage (estoura cota e trava a UI).
+- **Persistência**: só os metadados (imageId, dimensões, transformações) vão no `Doc`, que hoje é gravado dentro do `DraftBody` do rascunho no **IndexedDB** (`src/lib/drafts/`); o **binário processado + miniatura ficam no store `images`** do mesmo banco (`cuscuz-insta-kit`) — **nunca** guardar foto em base64 em `localStorage` (estoura cota e trava a UI). O GC de órfãos considera a união dos `imageId`s de **todos** os rascunhos e slides, não só do ativo.
 - Pipeline: raster (png/jpeg/webp/gif/avif/bmp; **SVG recusado**), máx. 25 MB, downscale para no máximo 3000 px no maior lado, encode WebP q0.92 com fallback JPEG, miniatura de 320 px, fila sequencial de importação.
 - Ao remover, o blob **não** é apagado na hora (undo precisa dele); GC de órfãos roda no boot, junto com a reconciliação do doc.
 
@@ -144,53 +162,110 @@ Quando o "Efeito da Marca" está ativo em títulos:
 - **Regra de Texto em grupo**: durante o redimensionamento em conjunto, a regra `Texto ≤ Título` (seção 2.6) e os limites globais de fonte são checados sobre a proporção do conjunto; se o limite for atingido, o `boundBoxFunc` trava a escala e emite o toast amigável correspondente.
 - **Ações em lote**: a `AlignToolbar` exibe o selo `N×` com as ações de alinhar à página pela caixa do grupo, trazer pra frente, enviar pra trás, duplicar (respeitando o limite de 5 imagens e ignorando logo duplicada com aviso) e excluir. Atalhos `Delete`, `Ctrl+D` e setas direcionais operam sobre todos os itens selecionados.
 
+### 2.12 Home "Meus rascunhos" e persistência (release v3)
+
+- **Primeira tela sempre**: `App.tsx` renderiza `boot` → `home` → `editor` conforme `draftsStore.screen`. O editor **só existe com um rascunho ativo**; `bootDrafts()` migra, reconcilia, roda GC e libera a home.
+- **Estado**: `store/draftsStore.ts` guarda `screen`, `drafts`, `listStatus`, `activeDraftId`, `activeKind`, `activeTitle`, `saveStatus`.
+- **Persistência** (`src/lib/drafts/`): banco IndexedDB `cuscuz-insta-kit` com stores `drafts` (`DraftMeta`), `documents` (`DraftBody`), `covers` (blob WebP), `meta` (marcador de migração) e `images`. `DRAFT_SCHEMA_VERSION = 2`. `DraftBody` é `SingleDraftBody { doc, finish }` ou `CarouselDraftBody { slides, activeSlideIndex, format }`. `DraftMeta` traz `title`, `titleSource: 'auto' | 'user'`, `kind`, `format`, `slideCount`, datas.
+- **Autosave** (`session.ts`): `markDraftDirty()` → `scheduleSave(450ms)` → `persistIfDirty()` → `saveDraftRecord()` (transação nos dois stores) → `updateActiveMeta` + `setSaveState('saved')` + `broadcastDraftsChanged()` + `ensureCover()`. `flushSession()` roda em `visibilitychange`/`pagehide`/`beforeunload`. Uma única `saveChain` serializa os saves; `navigator.locks` impede duas abas editando o mesmo rascunho; `BroadcastChannel('cuscuz-insta-kit:drafts')` mantém a home sincronizada.
+- **Capas** (`cover.ts`): `captureAndSaveCover()` e `ensureCover()` (primeira capa). O provedor em `EditorScreen.tsx` esconde Transformer/guias para capturar e **restaura seleção, edição e guias sem tocar em `step`**. `useDraftCovers` converte blobs em object URLs e os revoga na troca de lista.
+- **Home**: card "Continuar de onde parou" (último aberto), grade com capa/selo/título/ações, estado vazio orientante, renomear/duplicar/excluir com "Desfazer", "Baixar backup" (ZIP) e aviso de cota. **Sem rascunhos**, os botões de criação ficam **somente no quadro** (`showHeaderCreate = drafts.length > 0 || listStatus !== 'ready'`); com rascunhos, ficam no header. O título da seção tem o balão `HelpTip` (`(?)`) em vez de descrição permanente.
+- **Migração**: `migrateLegacyDrafts()` lê as chaves `localStorage` antigas, copia o JSON cru para `meta` (rollback) e grava os registros; é idempotente e **nunca apaga** as chaves legadas nesta versão.
+- **Reconciliação/GC**: união dos `imageId`s de todos os rascunhos e slides; `reconcileBodyImages` remove elementos fantasmas e `collectGarbageImages` apaga blobs órfãos.
+
+### 2.13 Modo Carrossel
+
+- **Dois modos**: `single` e `carousel` (`useCarousel.mode`), alternados pelo `ModeDropdown` do Header. Post único → Carrossel pede confirmação ("Trocar pra Carrossel?"); Carrossel → Post único usa `SlidePickerDialog` (escolher slide ou "Começar do zero") com toast "Desfazer". **A conversão preserva o `activeDraftId`** — não cria nem descarta rascunho.
+- **Formato**: escolhido no diálogo de criação na home e **fixo** depois disso (`carouselStore.format`). `setFormat` do editor é ignorado no carrossel pelo subscriber; o Passo 1 não mostra o seletor.
+- **Slides**: `SlideData { id, doc, finish }`, até `CAROUSEL_MAX_SLIDES = 10`. `finish` é **por slide**; `loadSlideIntoEditor` zera etapa/seleção/histórico e o subscriber de `main.tsx` grava `doc`/`finish` de volta com `updateActiveSlide`. Elementos **crossover** vazam entre slides adjacentes (ver `.kiro/specs/carousel-posts/`).
+- **Tira de slides** (`SlideTray`): import **estático**, altura reservada (`min-height: 120px`), nasce no primeiro frame com botões **desativados**, `aria-busy` e "Preparando as miniaturas..."; `trayReady` libera quando a miniatura do slide ativo carrega **ou** após 1,5 s (nunca trava). Miniaturas via `useSlideThumb` (cache + hash, debounce 400 ms, largura 270 px) e `PreviewImage`.
+- **Exportação**: no modo Post único o Header exibe o botão primário `Exportar`; no modo Carrossel exibe o dropdown `Exportação` (`ExportDropdown`) com duas opções: `"Somente este slide"` (exporta PNG apenas do slide ativo) e `"Todos os slides"` (`exportCarousel()` gera ZIP `cuscuz-carrossel-YYYY-MM-DD-HHmm.zip`, `slide-NN.png`, com progresso no botão e confete ao concluir).
+- **Selo**: "Slide X de Y" aparece junto à folha (`role="status"`) e no contador da tira.
+
+### 2.14 Header, Dock e nome do projeto
+
+- **Nome editável** (Leva 2): clicar no `<h1>` abre `<input aria-label="Nome do projeto">`; Enter/blur confirma, `Escape` cancela, vazio/inalterado não salva. `renameActiveDraft()` (`session.ts`) atualiza **`activeMeta`** (senão o próximo autosave restaura o título automático), define `titleSource: 'user'`, chama `saveDraftRecord`, marca `isNewDraft = false` e transmite `drafts-changed`. Renomear um rascunho novo e vazio passa a persisti-lo.
+- `shortcuts.ts` já ignora `INPUT`/`TEXTAREA`/`contentEditable` — digitar no nome não apaga elementos nem move a seleção. `Header.module.css` define `.titleInput` com `user-select: text` (o `body` tem `user-select: none`).
+- **Renomear "sem salto" (Leva 3)**: ao entrar em edição, o título **permanece exatamente como estava** — a única mudança é a "pílula" creme (`--c-creme`) em volta, **sem borda, sem outline e sem empurrar nada**. O `<input>` fica em um `inline-grid` com um `.titleGhost` (`opacity: 0`, **não** `visibility: hidden`, que colapsa a largura em Chromium) que espelha o texto e dimensiona o campo; só cresce ao digitar (empurrando o selo `Salvo`, nunca no clique). Há limite de **80 caracteres** (`maxLength`) e `max-width: min(340px, 100%)` (inclusive no mobile, onde `60vw` fazia o `<h1>` cobrir o selo `Salvo`). O texto é **todo selecionado ao focar**.
+- **Mesmo comportamento no card da home** (`HomeScreen.tsx`): clicar no título **ou** no botão `Renomear` (lápis) abre a mesma pílula inline (`.cardTitleGhost`). Não existe mais campo com borda verde. O card ganhou o botão direto **`Exportar`** (`HomeDraftExporter.tsx`, exporta PNG/ZIP sem abrir o editor), ao lado de Duplicar e Excluir.
+- **Cor de seleção da marca**: `::selection` e `::-moz-selection` em `global.css` usam o **amarelo da marca** (`--c-amarelo`, `#f8ce2b`) com texto `--c-preto`; o mesmo vale para o realce de seleção em `ThumbGrid` e `EditorCanvas`. Nada de azul padrão do navegador.
+- **Layout do Header e Dock**:
+  - À esquerda no Header: botão Voltar, título editável + subtítulo (`FormatGlyph` + formato) e, logo ao lado, o **selo de autosave** (`Salvo` / `Salvando...` / `Alterações...`).
+  - À direita no Header: `ModeDropdown` seguido da ação de exportação (`Exportar` em post único ou dropdown `Exportação` no carrossel). O antigo botão `"Começar do zero"` foi removido do Header.
+  - No Dock lateral direito (`EditorScreen.tsx`): `ZoomControls`, `BackgroundMirrorToolbar`, `AlignToolbar`, `GuideToolbar` e, na base (onde antes ficava o botão de download), o grupo de **Desfazer / Refazer (Undo / Redo)**.
+
+### 2.15 Componentes de UI e convenções visuais
+
+- **`PreviewImage`** (`components/ui/`): toda prévia de imagem passa por ele. Estados `empty/loading/loaded/error` escopados por `src`; `<img>` nasce com `opacity: 0` e só aparece no `onLoad` — **nunca** exibir `alt` cru nem ícone de imagem quebrada. Variantes `compact` (só o anel, dimensionado pelo container) e `full` (selo adesivo com anel + "Carregando prévia..."). Spinner: borda 3 px preta com arcos amarelo/barro, `0.9s linear infinite` (`--duration-loading`), **`1.6s` com `prefers-reduced-motion`** (giro é feedback essencial; o restante do app respeita a regra global). Fundo creme com pontilhado barro, estático.
+- **`HelpTip`**: balão `(?)` com `role="tooltip"`, `aria-describedby`, `aria-expanded`; abre em hover, foco e toque; fecha em `Escape`, `blur` e clique fora. Usado no título "Meus rascunhos".
+- **`BackgroundMirrorToolbar`**: reusa `AlignToolbar.module.css`; dois `IconButton` com `active` no dock direito, contextual (Passo 1 + fundo + sem seleção).
+- **Scrollbars**: `global.css` aplica `scrollbar-color: var(--c-amarelo-quente) var(--c-surface-muted)` e `scrollbar-width: thin` em `html`, mantém `::-webkit-scrollbar*` (inclusive `:active` e `-corner`) e `summary:focus-visible` no seletor de foco. `scrollbar-gutter: stable` permanece nos containers de rolagem. Em macOS com overlay scrollbars o sistema pode ignorar a estilização.
+- **Scrollbar fina e arredondada em todos os navegadores** (Leva 3): 6 px com pontas redondas; no Firefox, onde o CSS não arredonda a barra nativa, `FirefoxRoundScrollbar.tsx` desenha uma barra própria sobre os containers de rolagem.
+- **Ajuda no contexto**: descrições longas viram balão, não texto permanente. Microcopy em PT-BR, calorosa, sem diminutivos nos títulos das etapas.
+
+### 2.16 Testes e verificação
+
+- `npm run typecheck` · `npm run test` (Vitest + jsdom, **160 testes** em 15 arquivos) · `npm run build` · `npm run e2e` (**67 passed / 3 skipped**, 70 testes em desktop + mobile).
+- **Obrigatório rodar `npm run build` antes de `npm run e2e`**: `playwright.config.ts` serve `dist/` na porta 4173 via `npm run preview`. Sem rebuild, os e2e testam código velho.
+- Suíte e2e: `flow`, `format`, `image`, `multiselect`, `rascunhos`, `momento-zero`, `regressoes` (regressões das duas levas) + `helpers.ts`. `CREATE_SINGLE = /^(Post único|Criar post único)$/` e `CREATE_CAROUSEL = /^(Carrossel|Criar carrossel)$/` centralizam os dois estados da home; `waitForHome()` é independente da contagem de rascunhos.
+- **Contratos de seletor a preservar**: `Papel/Borda/Grain (Desligado|Ligado)`, "Corte vertical", "Topo"/"Centro"/"Base", "Slide 1 de 1" (duas ocorrências no carrossel), "Espelhar fundo ↔/↕" no fundo e "Espelhar ↔/↕" nos cards de imagem/enfeite, `mode-dropdown-trigger`, `slide-badge`, `export-dropdown-trigger`, `canvas-busy-overlay`.
+
+### 2.17 Feedback de carregamento (Leva 3)
+
+Problema: trocar o fundo ou adicionar enfeite/foto/logo/textura demorava (assets WebP de até 1,2 MB + decode) **sem nenhum sinal** na tela. Regra: **toda ação que leva tempo para aparecer na folha precisa de feedback imediato, temático e que nunca bloqueia a interação.**
+
+- **Selo sobre a folha** (`EditorCanvas.tsx` + `.canvasBusyOverlay*`): adesivo "caderninho" com spinner (mesma linguagem do `PreviewImage`) e microcopy da marca — `"Colando o fundo na folha... 🌽"`, `"Trocando o fundo... 🌽"`, `"Colando {enfeite}... ✨"`, `"Colando sua foto na folha... 📸"`, `"Carimbando a logo... 🏷️"`, `"Aplicando textura... ✨"`. Fundo e textura ganham também um véu leve sobre a folha. `pointer-events: none`, `aria-hidden`, `data-testid="canvas-busy-overlay"` (contrato de teste). Fica visível **no mínimo 280 ms** (para o usuário perceber) e enquanto houver carregamento em curso.
+- **Fonte do estado** (`lib/useImage.ts`): `announceCanvasActivity(kind, label)` + `useCanvasActivity()` (ação explícita da usuária), `useLoadingImages()` (qualquer imagem do canvas em carregamento) e `beginImageImport`/`endImageImport` + `useImageImportBusy()` (pipeline de foto: decode → downscale → WebP → IndexedDB). `EditorCanvas` combina os três em `activeFeedback`. Os steps (`Background/Decoration/Logo/Texture/ImageStep`) só chamam `announceCanvasActivity` no clique.
+- **Miniaturas**: `ThumbGrid` mostra um spinner no selo da miniatura escolhida enquanto o asset em alta ainda carrega (`.checkBadgeLoading`/`.badgeSpinner`) e dispara `preloadImage(src)` em `onMouseEnter`/`onFocus`, de modo que o clique costuma achar o asset já decodificado.
+- **Fotos do usuário**: `ImageStep`/`imageImport` chamam `await preloadImage(entry.url)` antes de `addImage`/`replaceImage`, evitando segundo "vazio" ao montar o `ImageNode`.
+- **Carregamento sob demanda**: `TextureOverlays.tsx` e `TextNode.tsx` só chamam `useImage` para `papel-textura.webp`/`textura-borda.webp` quando a textura/borda está **ligada** — antes eram 2,2 MB decodificados no boot, competindo com a escolha do fundo.
+- `EditorCanvas` inclui `loadingUrls.size` nas dependências do efeito que anexa o `Transformer`, para que o elemento recém-adicionado receba as alças assim que a imagem termina de carregar.
+
 ---
 
 ## 3. Estrutura do Repositório
 
 ```
-post-generator/
-├── AGENTS.md                   # Este manual
-├── INICIAR-CUSCUZ.bat          # Instalador/launcher de 1 clique para a cliente
-│                               #   (npm install → npm run assets → npm run dev + abre o navegador)
-├── BACKGROUNDS PRESETS/        # Fundos estilizados originais
-├── BACKGROUND PUROS/           # Fundos texturizados puros originais
-├── BORDER/                     # Textura de borda original
-├── CORES/                      # Instruções de paleta
-├── DETALHES DE BORDA/          # Enfeites florais e ondas originais
-├── LOGO/                       # Logos oficiais originais
-├── TYPOGRAPHY/                 # Orientações tipográficas
-├── TEXTURE/                    # Textura de papel amassado original (usada pela Etapa 5)
+post-generator/                  # Raiz com os assets originais (NÃO editar diretamente)
+├── INICIAR-CUSCUZ.bat          # Launcher de 1 clique para a cliente
+├── BACKGROUNDS PRESETS/        # Fundos estilizados
+├── BACKGROUND PUROS/           # Fundos texturizados puros
+├── BORDER/  ·  CORES/  ·  DETALHES DE BORDA/
+├── ENFEITE/  ·  GRAFISMOS/  ·  JANELA/
+├── LOGO/  ·  TYPOGRAPHY/  ·  TEXTURE/
 └── insta-kit/                  # Aplicação Web (React + TS + Vite + Konva)
-    ├── package.json
-    ├── vite.config.ts
-    ├── tsconfig.json
-    ├── vercel.json             # Cache-Control de /assets e /brand no deploy da Vercel
-    ├── playwright.config.ts
-    ├── scripts/
-    │   └── build-assets.mjs    # Pipeline de otimização lossless e geração de manifest
+    ├── AGENTS.md               # Este manual — fonte de verdade do projeto
+    ├── README.md               # Comandos + créditos do BiRefNet
+    ├── package.json · vite.config.ts · tsconfig.json · playwright.config.ts
+    ├── vercel.json · public/_headers   # Cache /assets (1 ano) e /brand (7 dias)
+    ├── scripts/build-assets.mjs # Otimização lossless + DECOR_OVERRIDES + manifest
+    ├── .kiro/specs/            # cuscuz-insta-kit/ e carousel-posts/ (com Revisão no topo)
+    ├── tmp/                    # relacao_de_problema.md · PLANO-UX.md · PLANO-LEVA-2.md
     ├── e2e/
-    │   ├── flow.spec.ts        # Fluxo completo de criação (Playwright)
-    │   ├── format.spec.ts      # Formatos 3:4, 4:3, 1:1, corte/deslize e exportação
-    │   ├── image.spec.ts       # Etapa 3: imagens do usuário (upload/drop, limite 5, export)
-    │   └── multiselect.spec.ts # Seleção conjunta (Ctrl+clique, mover, escala, giro, undo)
-    ├── public/
-    │   └── brand/              # Assets WebP otimizados gerados pelo script (+ thumbs/ para a UI)
+    │   ├── helpers.ts          # CREATE_SINGLE / CREATE_CAROUSEL / waitForHome / snapshots
+    │   ├── flow.spec.ts · format.spec.ts · image.spec.ts · multiselect.spec.ts
+    │   ├── rascunhos.spec.ts · momento-zero.spec.ts
+    │   └── regressoes.spec.ts  # Regressões das levas 1 e 2
+    ├── public/brand/           # Assets WebP gerados (+ thumbs/)
     └── src/
-        ├── brand/brand.ts      # Definições centrais da marca (cores, fontes, presets, POST_FORMATS, getPostDimensions, limites)
-        ├── store/editorStore.ts# Estado global Zustand + zundo (undo/redo, format, backgroundOffsetY) + persistência
-        ├── theme/              # tokens.css e global.css (design tokens da UI)
-        ├── types.ts            # Tipos compartilhados do editor (PostFormat, 6 etapas, El, ImageEl, Doc)
-        ├── assets.ts           # Acesso tipado ao assets-manifest.json gerado
-        ├── lib/                # Regras de alinhamento, limites de texto, seleção múltipla (multiSelect.ts),
-        │                       #   export, atalhos, grão, zoom, estilo do editor inline e IMAGENS DO USUÁRIO
-        │                       #   (imageRules.ts, imageImport.ts, userImages.ts/IndexedDB)
-        │                       #   e REMOÇÃO DE FUNDO client-side (bgRemoval.ts, bgRemovalStatus.ts)
-        ├── canvas/             # Componentes Konva (EditorCanvas, Nodes incl. ImageNode, Snap,
-        │                       #   guias de layout, overlays de textura e editor de texto in-line)
-        ├── components/         # Header, Stepper, StepFooter, Toolbars, Toast, ConfirmDialog
-        │   └── ui/             # Design system (Button, IconButton, Card, Slider, Segmented…)
-        └── steps/              # Painéis das 6 etapas: Fundo, Enfeites, Imagem, Texto, Logo, Textura
+        ├── App.tsx · main.tsx · types.ts · assets.ts · assets-manifest.json
+        ├── brand/brand.ts      # Cores, fontes, presets, POST_FORMATS, limites de fonte
+        ├── theme/              # tokens.css (--duration-loading) e global.css (scrollbars)
+        ├── store/              # editorStore (zundo) · carouselStore · draftsStore
+        ├── screens/            # HomeScreen ("Meus rascunhos") · EditorScreen
+        ├── lib/drafts/         # types · db · repository · content · migration · session · cover · backup
+        ├── lib/                # align · textRules · multiSelect · imageRules/imageImport/userImages
+        │                       # bgRemoval* · carouselGC · crossover · export/exportCarousel
+        │                       # fonts · grain · shortcuts · storage · useImage · zoom
+        ├── canvas/             # EditorCanvas · Nodes · hooks (useSlideThumb, useCanvasFitWidth…)
+        ├── components/
+        │   ├── Header · Stepper · StepFooter · Toast · ConfirmDialog · ModeDropdown
+        │   ├── ZoomControls · GuideToolbar · AlignToolbar · BackgroundMirrorToolbar
+        │   ├── carousel/       # SlideTray · SlideThumb · SlidePickerDialog
+        │   └── ui/             # Button · IconButton · Card · Slider · Segmented
+        │                       # ColorSwatches · ThumbGrid · FormatGlyph · PreviewImage · HelpTip
+        └── steps/              # BackgroundStep · DecorationStep · ImageStep
+                                # TextStep · LogoStep · TextureStep
 ```
 
 ---
@@ -221,12 +296,19 @@ npm run typecheck
 # 5. Compilação para produção
 npm run build
 
-# 6. Testes end-to-end (Playwright)
+# 6. Testes end-to-end (Playwright) — SEMPRE depois de um build
+npm run build
 npm run e2e
 
 # 7. Servidor de prévia do build de produção (porta 4173)
 npm run preview
 ```
+
+**Ordem obrigatória:** `npm run typecheck` → `npm run test` → `npm run build` → `npm run e2e`.
+O `playwright.config.ts` sobe `npm run preview` servindo **`dist/`** na porta 4173 — sem
+rebuild, os testes e2e rodam código velho. Ao alterar `DECOR_OVERRIDES` (labels dos
+enfeites), rodar `npm run assets` **antes** do build e conferir que os `id`s e os hashes
+dos WebPs não mudaram.
 
 ---
 
@@ -235,7 +317,7 @@ npm run preview
 - **Estética da UI**: "Caderninho de receitas nordestino", fofa, com sombras sólidas (`0 4px 0 #0b0500`), bordas de 3px, botões estilo adesivo com micro-interações de pressão.
 - **Microcopy**: Tom caloroso, amigável e descontraído em Português do Brasil ("Bora!", "Prontinho!", "Enfeita aí!", "Opa!").
   **Sem diminutivos nos títulos das etapas**: "1. Escolha o fundo" (não "fundinho") — o mesmo vale para toasts que repetem a instrução ("Escolha um fundo primeiro").
-- **Performance**: Manter o bundle leve, imagens sempre em WebP lossless, lazy loading de painéis e fontes pré-carregadas.
+- **Performance**: Manter o bundle leve (`manualChunks` para `react`/`konva`/`carousel`), imagens sempre em WebP, `loading="lazy"` nas prévias via `PreviewImage` e fontes pré-carregadas. O carregamento pesado de `@huggingface/transformers` continua sob demanda.
 - **Arquivos grandes do usuário**: vão para o IndexedDB, nunca para o localStorage (o doc persistido
   carrega apenas metadados; ver seção 2.9). No undo, blobs não são revogados — a coleta de órfãos
   acontece no boot, junto da reconciliação do doc.
@@ -243,3 +325,10 @@ npm run preview
   (conteúdo duplicado — altere os dois juntos): `/assets/*` imutável (1 ano) e `/brand/*` com revalidação de 7 dias,
   pois os assets da marca podem ser regenerados pelo pipeline `npm run assets`.
 - **Imutabilidade das pastas raiz**: Nunca modifique diretamente os arquivos nas pastas raiz de assets sem autorização expressa do usuário. Novos assets devem ser processados pelo script `npm run assets`.
+- **Ids de asset são contrato de dados**: `assetId` fica gravado nos `Doc` persistidos. Renomear só o `label` (seção 2.7); nunca trocar `id`, `src`, `thumb`, `blend` ou `fullSheet` de um asset existente sem migração explícita.
+- **Prévias de imagem**: sempre via `PreviewImage` (seção 2.15). Nunca `<img>` com `alt` visível durante o carregamento nem placeholder "Vazio" piscando.
+- **Ajuda e revelação progressiva**: texto explicativo longo vai para `HelpTip` ou `<details>`; o painel mostra só o essencial da etapa. Balões e disclosures precisam funcionar por teclado e toque (`focus-visible`, `Escape`, `aria-expanded`).
+- **Undo em uma ação só**: ao criar ações que mexem em vários campos (ex.: `enableAllFinishes`), usar **um único `set`** para gerar um único passo de undo; nunca encadear vários setters.
+- **Autosave e seleção**: qualquer rotina que capture o canvas (capas, miniaturas) deve preservar `selectedIds`, `editingId` e **nunca restaurar `step`** — a usuária pode ter mudado de etapa durante a captura.
+- **Seletores e2e são contrato**: `e2e/helpers.ts` centraliza os rótulos de criação que mudam com o estado da home. Ao renomear botões usados por specs, atualizar o helper e as asserções correspondentes; não "afrouxar" testes para passar.
+- **Sem `any` / sem `as T` forçado**, sem placeholders, sem dependência nova quando a biblioteca padrão resolve; comentários só para regra de negócio, exceção de segurança ou decisão não óbvia.

@@ -1,5 +1,46 @@
 # Documento de Requisitos — Cuscuz Records Insta Kit
 
+> **Revisão 10/11/2026 — release v3 "Meus rascunhos" + levas de correção 1, 2 e 3.**
+> Este documento descreve a implementação de base. As seções abaixo seguem válidas como
+> histórico, mas os pontos desta revisão **prevalecem** sobre elas. A fonte de verdade
+> do projeto é `AGENTS.md` (na raiz de `insta-kit/`).
+>
+> **Leva 3 (10/11/2026) — o que prevalece**
+> - **Header/Dock**: logo da Cuscuz e botão "Começar do zero" removidos do Header; selo de autosave ao lado do título; `ModeDropdown` vem **antes** de `Exportar`/`Exportação`; Desfazer/Refazer ficam na base do dock direito.
+> - **Renomear sem salto**: título editável como pílula creme (sem borda/outline, auto-dimensionada, máx. 80 caracteres, texto selecionado ao focar) no Header **e** no card da home (clique no título ou no lápis "Renomear"); o card ganhou o botão direto "Exportar".
+> - **Seleção** de texto/realces em amarelo da marca (`--c-amarelo`); scrollbars finas e arredondadas em todos os navegadores (`FirefoxRoundScrollbar`).
+> - **Logo**: presets de posição seguem `layoutGuides.margin` (ou 0 com guias/margens desativadas).
+> - **Feedback de carregamento**: selo temático `canvas-busy-overlay` sobre a folha ao trocar fundo / adicionar enfeite, foto, logo ou textura (mín. 280 ms), spinner na miniatura escolhida, `preloadImage` em hover/foco, pré-decode das fotos importadas e texturas globais carregadas **só quando ligadas**. Ver `AGENTS.md` §2.14 e §2.17.
+>
+> **Mudanças de arquitetura que substituem o texto original**
+> - A aplicação **não abre mais direto no editor**: a home **"Meus rascunhos"**
+>   (`src/screens/HomeScreen.tsx`) é sempre a primeira tela; o editor só existe com um
+>   rascunho ativo (`src/store/draftsStore.ts` → `screen: 'boot' | 'home' | 'editor'`).
+> - Rascunhos (post único **e** carrossel) são persistidos em **IndexedDB** por
+>   `src/lib/drafts/` (stores `drafts`, `documents`, `covers`, `meta`, `images`; schema v2),
+>   com autosave debounced de 450 ms, `navigator.locks` por aba e `BroadcastChannel`.
+>   **Não há mais `persist` do Zustand escrevendo `Doc`/`FinishState` no `localStorage`.**
+>   As chaves legadas `cuscuz-insta-kit:rascunho` e `cuscuz-insta-kit:carrossel` são
+>   migradas de forma idempotente e mantidas como rollback.
+> - `useEditor` e `useCarousel` passam a ser estado de sessão em memória; o subscriber
+>   em `src/main.tsx` sincroniza `doc`/`finish` do slide ativo com `useCarousel`.
+> - Capas de rascunho: `src/lib/drafts/cover.ts` (`ensureCover`, `captureAndSaveCover`),
+>   geradas no autosave, na saída do editor e em `pagehide`/`visibilitychange`.
+> - **Numeração**: este documento usa etapas 0–5; a UI e o `AGENTS.md` usam 1–6
+>   ("1. Escolha o fundo" … "6. Textura final"). São as mesmas seis etapas.
+>
+> **Critérios superados neste documento**
+> | Critério | Situação atual |
+> |---|---|
+> | 1.9, 9.9, 11.4 (persistência em `localStorage`) | `DraftBody` no IndexedDB; ver Req. 12 |
+> | 5.10, 5.11, 8.8 (`FONT_SIZE_MAX = 320` para todo texto) | Corpo `BODY_FONT_SIZE_MAX = 320`; título `HEADING_FONT_SIZE_MAX = 4000` (Leva 1) |
+> | 11.5 (seletor de formato sempre no cabeçalho) | Seletor no painel do Passo 1, **apenas no post único**; carrossel é somente leitura (Leva 1) |
+> | 2.1–2.3 (nomes provisórios dos enfeites) | 12 labels padronizados via `DECOR_OVERRIDES`; `id`s preservados (Leva 2) |
+> | 7 (prévias de textura sempre visíveis) | Prévias em `<details>` + botão "Ativar todas" (Leva 2) |
+>
+> **Novos requisitos:** 12 (home/rascunhos/confiança) e 13 (ajustes de UX da Leva 2),
+> ao final deste documento.
+
 ## Introdução
 
 O **Cuscuz Records Insta Kit** é uma aplicação web estática (React 18 + TypeScript + Vite + Konva) que permite à gravadora independente **Cuscuz Records** criar posts para o feed do Instagram nos formatos Vertical 3:4, Horizontal 4:3 e Quadrado 1:1, mantendo 100% de consistência com a identidade visual da marca. A criação segue um fluxo linear de 6 etapas: Fundo → Enfeites → Imagens → Texto → Logo → Textura. Toda a lógica roda no navegador; nenhuma imagem do usuário é enviada a servidores externos.
@@ -49,7 +90,7 @@ O **Cuscuz Records Insta Kit** é uma aplicação web estática (React 18 + Type
 6. WHILE o passo ativo for a Etapa 0 (`step === 0`), THE Editor SHALL permitir que o usuário deslize o Fundo verticalmente por arrasto direto na Folha, pelo controle deslizante, ou pelos botões rápidos "Topo", "Centro" e "Base".
 7. WHEN o usuário muda para qualquer etapa diferente de 0 (`step !== 0`), THE Editor SHALL travar o Fundo contra qualquer deslocamento acidental, definindo `draggable={false}` e `listening={false}` no nó do fundo.
 8. THE Editor SHALL oferecer botões de espelhamento horizontal (↔) e vertical (↕) que flipem o Fundo pivotado no centro da Folha, sem vazar margens.
-9. THE Editor SHALL persistir `backgroundId`, `backgroundFlipX`, `backgroundFlipY` e `backgroundOffsetY` no Doc serializado no localStorage.
+9. THE Editor SHALL persistir `backgroundId`, `backgroundFlipX`, `backgroundFlipY` e `backgroundOffsetY` no `Doc` do `DraftBody` do rascunho ativo, gravado no IndexedDB (ver Revisão e Requisito 12).
 10. IF nenhum Preset de Fundo estiver selecionado ao tentar avançar de etapa, THEN THE Editor SHALL exibir a notificação: "Escolha um fundo primeiro".
 
 ---
@@ -88,7 +129,7 @@ O **Cuscuz Records Insta Kit** é uma aplicação web estática (React 18 + Type
 3. IF o arquivo submetido for SVG, THEN THE Editor SHALL recusar a imagem e exibir uma mensagem informando que SVG não é suportado.
 4. IF o arquivo submetido exceder 25 MB (`IMAGE_MAX_FILE_BYTES`), THEN THE Editor SHALL recusar o arquivo e exibir uma mensagem de tamanho máximo excedido.
 5. THE Editor SHALL processar cada imagem aceita através do pipeline: downscale para no máximo 3000 px no maior lado (`IMAGE_MAX_SIDE`), encoding para WebP qualidade 0,92 com fallback JPEG, e geração de miniatura de 320 px.
-6. THE Editor SHALL armazenar o blob processado e a miniatura no IndexedDB (`cuscuz-insta-kit`, store `images`) e persistir apenas os metadados (`imageId`, dimensões, transformações) no Doc do localStorage.
+6. THE Editor SHALL armazenar o blob processado e a miniatura no IndexedDB (`cuscuz-insta-kit`, store `images`) e persistir apenas os metadados (`imageId`, dimensões, transformações) no `Doc` do `DraftBody` (store `documents` do mesmo banco).
 7. THE Editor SHALL processar arquivos importados de forma sequencial (fila FIFO), nunca em paralelo.
 8. WHILE o número de `ImageEl` no Doc for igual a `IMAGE_MAX_COUNT` (5), THE Editor SHALL bloquear qualquer nova importação e exibir o toast: "Limite de 5 imagens atingido".
 9. THE Editor SHALL permitir as seguintes transformações em cada `ImageEl`: arrasto livre, redimensionamento proporcional, rotação, flip horizontal (↔), flip vertical (↕), Snap a guias, reordenação de camadas, duplicação e exclusão.
@@ -140,8 +181,8 @@ O **Cuscuz Records Insta Kit** é uma aplicação web estática (React 18 + Type
 7. WHEN o usuário tenta aumentar o `fontSize` de um `TextEl` do estilo `body` acima do limite, THE Editor SHALL travar no valor máximo permitido e exibir a notificação: "Opa! O texto não pode ficar maior que o título 🙈".
 8. THE Editor SHALL impedir que um `TextEl` do estilo `title` ou `highlight` seja reduzido abaixo do maior `fontSize` de qualquer `TextEl` do estilo `body` presente no Doc.
 9. THE Editor SHALL suportar edição inline ao duplo clique no `TextEl` na Folha, exibindo o `InlineTextEditor` posicionado sobre o nó e respeitando a escala atual do canvas.
-10. THE Editor SHALL oferecer controles de `fontSize` (16–320 px, `FONT_SIZE_MIN`–`FONT_SIZE_MAX`), `lineHeight`, `letterSpacing`, alinhamento horizontal (esquerda, centro, direita) e alternância de maiúsculas (uppercase).
-11. THE Editor SHALL limitar `fontSize` ao intervalo `[FONT_SIZE_MIN, FONT_SIZE_MAX]` = [16, 320] px em todos os cenários de redimensionamento.
+10. THE Editor SHALL oferecer controles de `fontSize` (16–320 px para corpo, 16–4000 px para títulos/destaques), `lineHeight`, `letterSpacing`, alinhamento horizontal (esquerda, centro, direita) e alternância de maiúsculas (uppercase).
+11. THE Editor SHALL limitar `fontSize` por estilo em todos os cenários: corpo em `[FONT_SIZE_MIN, BODY_FONT_SIZE_MAX]` = [16, 320] px (e ainda ao menor título, ou 72 px sem título); títulos/destaques em `[FONT_SIZE_MIN, HEADING_FONT_SIZE_MAX]` = [16, 4000] px, sem poder ficar abaixo do maior corpo.
 
 ---
 
@@ -222,7 +263,7 @@ O **Cuscuz Records Insta Kit** é uma aplicação web estática (React 18 + Type
 6. THE Editor SHALL excluir as Guias de Layout do canvas exportado; somente Fundo, Elementos e Acabamentos devem aparecer na imagem exportada.
 7. THE Editor SHALL manter um histórico de Undo/Redo de 50 passos, com debounce de 400 ms para agrupar mudanças contínuas, gerenciado pelo zundo no `editorStore`.
 8. THE Editor SHALL suportar os atalhos `Ctrl+Z` (Undo) e `Ctrl+Shift+Z` ou `Ctrl+Y` (Redo) para navegar pelo histórico.
-9. THE Editor SHALL persistir o Doc (apenas metadados, sem blobs) e o `FinishState` no `localStorage` como rascunho da sessão, recarregando-o automaticamente ao abrir o Editor.
+9. THE Editor SHALL persistir o `Doc` e o `FinishState` (apenas metadados, sem blobs) dentro do `DraftBody` do rascunho ativo no IndexedDB, com autosave e recarregamento pelo `openDraft()` a partir da home "Meus rascunhos" (ver Requisito 12).
 10. IF a reconciliação com o IndexedDB no boot remover `ImageEl` do Doc, THEN THE Editor SHALL registrar a remoção no histórico de forma que o estado carregado seja consistente desde o início da sessão.
 
 ---
@@ -256,8 +297,8 @@ O **Cuscuz Records Insta Kit** é uma aplicação web estática (React 18 + Type
 1. THE Editor SHALL suportar três Formatos: Vertical (3:4 · 1080×1440 px), Horizontal (4:3 · 1440×1080 px) e Quadrado (1:1 · 1080×1080 px), definidos em `POST_FORMATS`.
 2. WHEN o usuário troca o Formato, THE Editor SHALL reajustar imediatamente as dimensões da Folha no canvas e atualizar o `pixelRatio` de exportação de acordo com as novas dimensões.
 3. WHEN o Formato for alterado, THE Editor SHALL preservar o `backgroundId`, `backgroundFlipX`, `backgroundFlipY`, `backgroundOffsetY` e todos os `elements` do Doc sem reinicializá-los.
-4. THE Editor SHALL persistir o Formato ativo no Doc serializado no `localStorage`.
-5. THE Editor SHALL exibir o seletor de Formato no cabeçalho do Editor, sempre visível independentemente da etapa ativa.
+4. THE Editor SHALL persistir o Formato ativo no `Doc` do `DraftBody` no IndexedDB; no carrossel o formato também fica em `CarouselDraftBody.format` e `DraftMeta.format`.
+5. THE Editor SHALL exibir o seletor de Formato no painel do Passo 1 **apenas no Modo Post Único**; no Modo Carrossel o formato é definido na criação, é somente leitura e o seletor não deve ser renderizado (informação visível no Header via `FormatGlyph`).
 
 ---
 
@@ -272,7 +313,7 @@ O **Cuscuz Records Insta Kit** é uma aplicação web estática (React 18 + Type
 ### Privacidade e Segurança
 
 - NF-4: THE Editor SHALL processar todas as imagens do usuário exclusivamente no navegador; nenhuma imagem, blob ou dado pessoal deve ser enviado a servidores externos em nenhuma circunstância.
-- NF-5: THE Editor SHALL armazenar blobs de imagens exclusivamente no IndexedDB; o `localStorage` deve conter apenas metadados serializáveis (sem binários, sem base64 de imagens).
+- NF-5: THE Editor SHALL armazenar blobs de imagens exclusivamente no IndexedDB (store `images`); `Doc`, `FinishState` e `DraftMeta` também ficam no IndexedDB (stores `documents`/`drafts`). O `localStorage` guarda apenas preferências de UI e o modo de remoção de fundo — **nunca** binários, base64 de imagens nem o documento do post.
 
 ### Consistência Visual
 
@@ -288,3 +329,45 @@ O **Cuscuz Records Insta Kit** é uma aplicação web estática (React 18 + Type
 ### Deploy e Infraestrutura
 
 - NF-11: THE Editor SHALL ser deployado como site estático na Vercel com as seguintes políticas de cache definidas em `vercel.json` e `public/_headers`: `/assets/*` imutável (1 ano, Cache-Control: `public, max-age=31536000, immutable`) e `/brand/*` com revalidação de 7 dias (`public, max-age=604800, stale-while-revalidate=86400`).
+
+---
+
+## Requisito 12 — Home "Meus rascunhos", persistência e confiança (`drafts`, Leva 1)
+
+**User Story:** Como criadora de conteúdo, quero meus posts salvos com nome, capa e histórico, para nunca perder um trabalho ao recarregar a página.
+
+**Arquivos:** `src/App.tsx`, `src/screens/HomeScreen.tsx`, `src/screens/EditorScreen.tsx`, `src/store/draftsStore.ts`, `src/lib/drafts/*`, `src/components/Header.tsx`, `src/components/carousel/SlideTray.tsx`, `src/components/carousel/SlideThumb.tsx`, `src/components/ui/PreviewImage.tsx`, `src/lib/textRules.ts`, `src/lib/multiSelect.ts`, `src/steps/BackgroundStep.tsx`.
+
+### Critérios de Aceitação
+
+1. THE App SHALL iniciar sempre na home "Meus rascunhos" (`screen === 'home'` após `bootDrafts()`), exibindo lista de rascunhos, card "Continuar de onde parou", estado vazio orientante e ações de abrir/renomear/duplicar/excluir com "Desfazer".
+2. THE App SHALL persistir cada rascunho em IndexedDB (`DraftMeta` + `DraftBody` + capa WebP), com `schemaVersion = 2`, `titleSource: 'auto' | 'user'`, `kind: 'single' | 'carousel'`, `slideCount` e `format`.
+3. THE App SHALL salvar com autosave debounced de 450 ms, expor o status no Header ("Alterações…" / "Salvando…" / "Salvo" / "Não salvou") e oferecer "Tentar de novo" em caso de erro.
+4. WHEN a página é recarregada dentro do editor, THEN THE App SHALL voltar para a home com todos os textos, cards e capas íntegros — nenhum placeholder pode escapar para o viewport (regressão do item 12 da lista de problemas).
+5. THE App SHALL gerar a primeira capa no autosave (`ensureCover`) e renová-la na saída do editor e em `pagehide`/`visibilitychange`, sem roubar a seleção, a edição inline ou a etapa ativa do usuário.
+6. WHILE o Modo Carrossel está ativo, THE App SHALL renderizar a `SlideTray` no primeiro frame (import estático, altura reservada), com botões desativados, `aria-busy` e feedback "Preparando as miniaturas..."; THE App SHALL liberar os botões quando a miniatura do slide ativo carregar **ou** após 1,5 s de segurança.
+7. THE App SHALL exibir em toda prévia de imagem o `PreviewImage` com spinner temático (anel preto/amarelo/barro, `0.9s linear infinite`; `1.6s` com movimento reduzido), sem `alt` cru e sem placeholder "Vazio" piscando.
+8. THE App SHALL permitir título/destaque até `HEADING_FONT_SIZE_MAX` (4000 px) mantendo `Texto ≤ Título`, o piso de 16 px e o teto de corpo de 320 px (`BODY_FONT_SIZE_MAX`).
+9. WHILE o Modo Carrossel está ativo, THE App SHALL ocultar o seletor "Formato do post" do Passo 1 e exibir a informação do formato apenas como leitura no Header.
+10. THE App SHALL oferecer backup em ZIP (`exportDraftsBackup`) e migração idempotente das chaves `localStorage` legadas, sem apagá-las (rollback).
+
+---
+
+## Requisito 13 — Ajustes de UX e identidade (`ux-polish`, Leva 2)
+
+**User Story:** Como criadora de conteúdo, quero uma interface limpa, com nomes compreensíveis e controles onde eu espero encontrá-los, para criar sem dúvida.
+
+**Arquivos:** `src/components/ui/HelpTip.tsx`, `src/components/BackgroundMirrorToolbar.tsx`, `src/screens/HomeScreen.tsx`, `src/components/Header.tsx`, `src/lib/drafts/session.ts`, `src/steps/TextureStep.tsx`, `src/store/editorStore.ts`, `src/theme/global.css`, `scripts/build-assets.mjs`, `src/assets-manifest.json`, `e2e/helpers.ts`.
+
+### Critérios de Aceitação
+
+1. THE App SHALL exibir o título "Meus rascunhos" sem descrição permanente; a explicação SHALL ficar no balão do `HelpTip` (`(?)`), acessível por hover, foco, toque e fechável por `Escape`/clique fora, com `role="tooltip"` e `aria-describedby`.
+2. WHEN `drafts.length === 0 && listStatus === 'ready'`, THEN THE App SHALL exibir os botões de criação **apenas** dentro do quadro de rascunhos ("Criar carrossel" / "Criar post único") e ocultar os equivalentes do header; THE App SHALL manter "Baixar backup" e, em `listStatus !== 'ready'`, manter os botões do header como saída.
+3. THE App SHALL oferecer o espelhamento do fundo na `BackgroundMirrorToolbar` do dock direito, com `aria-label` "Espelhar fundo ↔" / "Espelhar fundo ↕" e estado `active`, visível quando `step === 0`, há fundo escolhido e nenhum elemento selecionado; THE App SHALL remover o card "Opções do Fundo" do painel, mantendo os controles de corte 1:1 ("Corte vertical", "Topo", "Centro", "Base") como bloco inline.
+4. THE App SHALL permitir renomear o projeto clicando no `<h1>` do Header: o nome vira `<input aria-label="Nome do projeto">`; Enter/blur confirma, `Escape` cancela, e `renameActiveDraft()` SHALL atualizar `activeMeta` com `titleSource: 'user'`, gravar `saveDraftRecord` e transmitir `drafts-changed` (o autosave não pode sobrescrever o nome).
+5. THE App SHALL oferecer "Ativar todas" na Etapa 6 via `enableAllFinishes()` — um único `set`, um único passo de undo, preservando opacidades/intensidade — e SHALL desabilitá-lo quando os três acabamentos já estiverem ligados.
+6. THE App SHALL manter as prévias de papel amassado e textura de borda fechadas por padrão em `<details>/<summary>` ("Ver prévia da textura"), montando o `PreviewImage` somente quando abertas; `summary:focus-visible` SHALL receber o outline verde.
+7. THE App SHALL aplicar `scrollbar-color: var(--c-amarelo-quente) var(--c-surface-muted)` e `scrollbar-width: thin` em `html`, mantendo as regras `::-webkit-scrollbar*` (inclusive `:active` e `-corner`) e `scrollbar-gutter: stable` nos containers de rolagem.
+8. THE App SHALL usar os 12 labels padronizados dos enfeites em Title Case (ex.: "Arabesco floral", "Faixa de espinhos", "Tocador retrô", "Janela retrô"), definidos em `DECOR_OVERRIDES`; THE App SHALL **preservar todos os `id`s**, pois estão gravados nos `Doc` dos rascunhos e `sanitize()` descarta enfeites com `id` desconhecido.
+9. THE App SHALL manter `e2e/helpers.ts` com `CREATE_SINGLE` / `CREATE_CAROUSEL` (regex que cobre os dois rótulos de criação) e `waitForHome()` independente do estado da lista, garantindo que nenhuma spec quebre com a mudança do item 2.
+10. THE App SHALL manter a suíte de regressão em `e2e/regressoes.spec.ts` cobrindo reload após conversão para carrossel, tira no primeiro frame, formato somente no post único, balão `(?)`, botões do estado vazio, espelhamento no dock, rename inline, dropdown de prévias, "Ativar todas" com undo e `scrollbar-color`.

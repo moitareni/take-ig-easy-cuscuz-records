@@ -1,4 +1,10 @@
-import { BODY_MAX_WITHOUT_HEADING, FONT_SIZE_MAX, FONT_SIZE_MIN, IMAGE_MAX_COUNT } from '../brand/brand';
+import {
+  BODY_FONT_SIZE_MAX,
+  BODY_MAX_WITHOUT_HEADING,
+  FONT_SIZE_MIN,
+  HEADING_FONT_SIZE_MAX,
+  IMAGE_MAX_COUNT,
+} from '../brand/brand';
 import type { Box, El, TextEl } from '../types';
 import { countImages } from './imageRules';
 import { effectiveSize, isHeading } from './textRules';
@@ -64,6 +70,8 @@ export interface GroupScaleBounds {
   /** Qual regra definiu cada limite (para o toast). */
   minReason: GroupLimitReason | null;
   maxReason: GroupLimitReason | null;
+  /** Teto absoluto que originou `maxReason === 'absolute'` (para a mensagem). */
+  maxCap: number;
 }
 
 /**
@@ -71,7 +79,7 @@ export interface GroupScaleBounds {
  * escalam juntos (a razão título/texto é preservada), então só importam:
  *  - corpo selecionado × títulos NÃO selecionados (ou 72px se não há título);
  *  - título selecionado × corpos NÃO selecionados;
- *  - limites absolutos de fonte (16–320px).
+ *  - limites absolutos de fonte (corpo 16–320px, título 16–4000px).
  * Fatores são calculados para que `round(fontSize × fator)` nunca viole a regra.
  */
 export function groupScaleBounds(elements: El[], ids: string[]): GroupScaleBounds {
@@ -79,30 +87,39 @@ export function groupScaleBounds(elements: El[], ids: string[]): GroupScaleBound
   const texts = elements.filter(isText);
   const picked = texts.filter((t) => sel.has(t.id));
   const rest = texts.filter((t) => !sel.has(t.id));
-  const none: GroupScaleBounds = { min: 0, max: Infinity, minReason: null, maxReason: null };
+  const none: GroupScaleBounds = {
+    min: 0,
+    max: Infinity,
+    minReason: null,
+    maxReason: null,
+    maxCap: BODY_FONT_SIZE_MAX,
+  };
   if (picked.length === 0) return none;
 
   let min = 0;
   let max = Infinity;
   let minReason: GroupLimitReason | null = null;
   let maxReason: GroupLimitReason | null = null;
+  let maxCap = BODY_FONT_SIZE_MAX;
   const lowerTo = (v: number, r: GroupLimitReason) => {
     if (v > min) {
       min = v;
       minReason = r;
     }
   };
-  const upperTo = (v: number, r: GroupLimitReason) => {
+  const upperTo = (v: number, r: GroupLimitReason, cap = BODY_FONT_SIZE_MAX) => {
     if (v < max) {
       max = v;
       maxReason = r;
+      maxCap = cap;
     }
   };
 
   for (const t of picked) {
     const size = effectiveSize(t);
+    const cap = isHeading(t) ? HEADING_FONT_SIZE_MAX : BODY_FONT_SIZE_MAX;
     lowerTo(FONT_SIZE_MIN / size, 'absolute');
-    upperTo(FONT_SIZE_MAX / size, 'absolute');
+    upperTo(cap / size, 'absolute', cap);
   }
 
   const bodies = picked.filter((t) => !isHeading(t));
@@ -125,17 +142,21 @@ export function groupScaleBounds(elements: El[], ids: string[]): GroupScaleBound
   }
 
   // Doc já inconsistente (limites se cruzam): trava no tamanho atual.
-  if (min > max) return { min: 1, max: 1, minReason, maxReason };
-  return { min, max, minReason, maxReason };
+  if (min > max) return { min: 1, max: 1, minReason, maxReason, maxCap };
+  return { min, max, minReason, maxReason, maxCap };
 }
 
 /** Mesmas mensagens de `clampTextSize` (AGENTS.md §2.6). */
-export function groupLimitMessage(reason: GroupLimitReason | null, direction: 'max' | 'min'): string | null {
+export function groupLimitMessage(
+  reason: GroupLimitReason | null,
+  direction: 'max' | 'min',
+  absoluteCap: number = BODY_FONT_SIZE_MAX,
+): string | null {
   if (!reason) return null;
   if (direction === 'max') {
     if (reason === 'heading') return 'Opa! O texto não pode ficar maior que o título 🙈';
     if (reason === 'noHeading') return `Opa! Sem título no post, o texto vai até ${BODY_MAX_WITHOUT_HEADING}px 🙈`;
-    return `Esse é o tamanho máximo (${FONT_SIZE_MAX}px) 🙈`;
+    return `Esse é o tamanho máximo (${absoluteCap}px) 🙈`;
   }
   if (reason === 'body') return 'Opa! O título não pode ficar menor que o texto 🙈';
   return `Esse é o tamanho mínimo (${FONT_SIZE_MIN}px) 🙈`;
@@ -143,7 +164,8 @@ export function groupLimitMessage(reason: GroupLimitReason | null, direction: 'm
 
 /**
  * Rede de segurança final (após arredondar fontes): limita corpos ao menor
- * título (ou 72px sem título) e todo texto a 16–320px. Não mexe em quem já cumpre.
+ * título (ou 72px sem título) e ao teto de corpo, e títulos ao teto técnico.
+ * Não mexe em quem já cumpre.
  */
 export function enforceTextRule(elements: El[]): El[] {
   const texts = elements.filter(isText);
@@ -151,9 +173,11 @@ export function enforceTextRule(elements: El[]): El[] {
   const bodyCap = headings.length > 0 ? Math.floor(Math.min(...headings.map(effectiveSize))) : BODY_MAX_WITHOUT_HEADING;
   return elements.map((e) => {
     if (e.kind !== 'text') return e;
+    const heading = isHeading(e);
+    const absoluteCap = heading ? HEADING_FONT_SIZE_MAX : BODY_FONT_SIZE_MAX;
     let size = e.fontSize;
-    if (!isHeading(e)) size = Math.min(size, bodyCap);
-    size = Math.min(FONT_SIZE_MAX, Math.max(FONT_SIZE_MIN, size));
+    if (!heading) size = Math.min(size, bodyCap, absoluteCap);
+    size = Math.min(absoluteCap, Math.max(FONT_SIZE_MIN, size));
     return size === e.fontSize ? e : { ...e, fontSize: size };
   });
 }

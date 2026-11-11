@@ -1,11 +1,11 @@
 import { test, expect } from '@playwright/test';
-import { dismissModeSelector } from './helpers';
+import { startEditor } from './helpers';
 
 test.describe('Cuscuz Records Insta Kit - Fluxo Completo', () => {
   test('cria um post completo e valida as regras da marca', async ({ page }) => {
     // 1. Abre o app
     await page.goto('/');
-    await dismissModeSelector(page);
+    await startEditor(page);
     await expect(page).toHaveTitle(/Cuscuz Records Insta Kit/);
 
     // 2. Passo 1: Fundo
@@ -18,9 +18,9 @@ test.describe('Cuscuz Records Insta Kit - Fluxo Completo', () => {
     await firstBg.click();
     await expect(nextBtn).toBeEnabled();
 
-    // Testa as opções de espelhamento do fundo
-    const flipHBtn = page.locator('button:has-text("Espelhar ↔")');
-    const flipVBtn = page.locator('button:has-text("Espelhar ↕")');
+    // Testa as opções de espelhamento do fundo no dock lateral
+    const flipHBtn = page.getByRole('button', { name: 'Espelhar fundo ↔' });
+    const flipVBtn = page.getByRole('button', { name: 'Espelhar fundo ↕' });
     await expect(flipHBtn).toBeVisible();
     await expect(flipVBtn).toBeVisible();
     await flipHBtn.click();
@@ -36,8 +36,8 @@ test.describe('Cuscuz Records Insta Kit - Fluxo Completo', () => {
     const skipBtn = page.locator('footer button:has-text("Pular (sem enfeites)")');
     await expect(skipBtn).toBeVisible();
 
-    // Adiciona um enfeite (Flores)
-    const floresBtn = page.locator('button[title*="Flores"]').first();
+    // Adiciona um enfeite (Arabesco floral)
+    const floresBtn = page.locator('button[title*="Arabesco floral"]').first();
     await floresBtn.click();
 
     // Agora o botão muda para "Próximo"
@@ -102,9 +102,9 @@ test.describe('Cuscuz Records Insta Kit - Fluxo Completo', () => {
     await expect(page.locator('button:has-text("Borda (Ligado)")')).toBeVisible();
     await expect(page.locator('button:has-text("Grain (Ligado)")')).toBeVisible();
 
-    // Dispara a exportação e captura o download (botão único no dock lateral)
+    // Dispara a exportação e captura o download (botão Exportar no Header)
     const downloadPromise = page.waitForEvent('download');
-    await page.locator('button[aria-label*="Baixar post"]').first().click();
+    await page.getByRole('button', { name: 'Exportar', exact: true }).click();
     const download = await downloadPromise;
 
     // Valida o nome do arquivo baixado

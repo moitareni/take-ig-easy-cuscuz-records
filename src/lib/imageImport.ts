@@ -1,5 +1,11 @@
 import type { ImageMeta } from '../store/editorStore';
 import { hasImageSlots } from './imageRules';
+import {
+  announceCanvasActivity,
+  beginImageImport,
+  endImageImport,
+  preloadImage,
+} from './useImage';
 import { importUserImage } from './userImages';
 import { useEditor } from '../store/editorStore';
 
@@ -12,35 +18,43 @@ export async function importImageFiles(
   files: File[],
   at?: { x: number; y: number },
 ): Promise<number> {
+  if (files.length === 0) return 0;
   let added = 0;
-  for (const file of files) {
-    const before = useEditor.getState();
-    if (!hasImageSlots(before.doc.elements)) {
-      before.showToast('info', 'Tá lotado! Cabem até 5 imagens por post 😅');
-      break;
-    }
-    try {
-      const { entry, persisted } = await importUserImage(file);
-      const st = useEditor.getState();
-      if (!hasImageSlots(st.doc.elements)) {
-        st.showToast('info', 'Tá lotado! Cabem até 5 imagens por post 😅');
+  beginImageImport(files.length);
+  announceCanvasActivity('image', 'Colando sua foto na folha... 📸');
+  try {
+    for (const file of files) {
+      const before = useEditor.getState();
+      if (!hasImageSlots(before.doc.elements)) {
+        before.showToast('info', 'Tá lotado! Cabem até 5 imagens por post 😅');
         break;
       }
-      st.addImage({ imageId: entry.id, name: entry.name, width: entry.width, height: entry.height }, at);
-      added += 1;
-      if (!persisted) {
-        st.showToast('info', 'Entrou na folha! Mas essa imagem não fica salva depois de recarregar 👀');
+      try {
+        const { entry, persisted } = await importUserImage(file);
+        await preloadImage(entry.url);
+        const st = useEditor.getState();
+        if (!hasImageSlots(st.doc.elements)) {
+          st.showToast('info', 'Tá lotado! Cabem até 5 imagens por post 😅');
+          break;
+        }
+        st.addImage({ imageId: entry.id, name: entry.name, width: entry.width, height: entry.height }, at);
+        added += 1;
+        if (!persisted) {
+          st.showToast('info', 'Entrou na folha! Mas essa imagem não fica salva depois de recarregar 👀');
+        }
+      } catch (err) {
+        const code = err instanceof Error ? err.message : '';
+        const toast =
+          code === 'tipo-nao-suportado'
+            ? 'Hm, esse formato de arquivo não rola 🙈'
+            : code === 'arquivo-grande'
+              ? 'Opa, mais de 25 MB! Manda uma imagem mais leve 🌽'
+              : 'Não consegui ler essa imagem 🙈 Tenta outra!';
+        useEditor.getState().showToast('error', toast);
       }
-    } catch (err) {
-      const code = err instanceof Error ? err.message : '';
-      const toast =
-        code === 'tipo-nao-suportado'
-          ? 'Hm, esse formato de arquivo não rola 🙈'
-          : code === 'arquivo-grande'
-            ? 'Opa, mais de 25 MB! Manda uma imagem mais leve 🌽'
-            : 'Não consegui ler essa imagem 🙈 Tenta outra!';
-      useEditor.getState().showToast('error', toast);
     }
+  } finally {
+    endImageImport(files.length);
   }
   return added;
 }

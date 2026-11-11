@@ -1,5 +1,18 @@
 # Plano de Implementação: Cuscuz Records Insta Kit
 
+> **Revisão 10/11/2026.** As tasks abaixo (Fase 1) estão concluídas e descrevem a
+> implementação de base. A release v3 "Meus rascunhos" e as três levas de correção
+> da `tmp/relacao_de_problema.md` foram implementadas **depois** e estão registradas
+> nas Fases 2 e 3, ao final. Onde houver conflito, prevalecem as fases novas e o
+> `AGENTS.md`. Numeração: aqui as etapas são 0–5; na UI são 1–6.
+>
+> **Leva 3 (10/11/2026) — o que prevalece**
+> - **Header/Dock**: logo da Cuscuz e botão "Começar do zero" removidos do Header; selo de autosave ao lado do título; `ModeDropdown` vem **antes** de `Exportar`/`Exportação`; Desfazer/Refazer ficam na base do dock direito.
+> - **Renomear sem salto**: título editável como pílula creme (sem borda/outline, auto-dimensionada, máx. 80 caracteres, texto selecionado ao focar) no Header **e** no card da home (clique no título ou no lápis "Renomear"); o card ganhou o botão direto "Exportar".
+> - **Seleção** de texto/realces em amarelo da marca (`--c-amarelo`); scrollbars finas e arredondadas em todos os navegadores (`FirefoxRoundScrollbar`).
+> - **Logo**: presets de posição seguem `layoutGuides.margin` (ou 0 com guias/margens desativadas).
+> - **Feedback de carregamento**: selo temático `canvas-busy-overlay` sobre a folha ao trocar fundo / adicionar enfeite, foto, logo ou textura (mín. 280 ms), spinner na miniatura escolhida, `preloadImage` em hover/foco, pré-decode das fotos importadas e texturas globais carregadas **só quando ligadas**. Ver `AGENTS.md` §2.14 e §2.17.
+
 ## Visão Geral
 
 O **Cuscuz Records Insta Kit** está completamente implementado. Este documento registra o estado atual das features e serve como ponto de entrada para manutenção e evolução futura. Todas as tasks estão marcadas como concluídas.
@@ -462,3 +475,50 @@ O **Cuscuz Records Insta Kit** está completamente implementado. Este documento 
   ]
 }
 ```
+
+---
+
+## Fase 2 — Release v3 "Meus rascunhos" (concluída)
+
+- [x] 2.1 Home como primeira tela (`App.tsx` → `screens/HomeScreen.tsx`; `draftsStore.ts`)
+  - [x] 2.1.1 Lista, card "Continuar de onde parou", estado vazio, renomear/duplicar/excluir com "Desfazer"
+  - [x] 2.1.2 Backup em ZIP (`lib/drafts/backup.ts`)
+- [x] 2.2 Persistência em IndexedDB (`lib/drafts/`: `types.ts`, `db.ts`, `repository.ts`, `content.ts`, `migration.ts`, `session.ts`, `cover.ts`)
+  - [x] 2.2.1 `DraftMeta` + `DraftBody` (single/carousel) + `covers`, schema v2
+  - [x] 2.2.2 Migração idempotente das chaves `localStorage` legadas (sem apagar o rollback)
+  - [x] 2.2.3 Autosave 450 ms, `flushDraft`/`flushSession`, `navigator.locks`, `BroadcastChannel`, reconciliação + GC de imagens
+  - [x] 2.2.4 `useEditor`/`useCarousel` sem `persist`; subscriber de sincronização em `main.tsx`
+- [x] 2.3 Header com selo de autosave, dropdown de modo e `FormatGlyph`
+- [x] 2.4 Testes: `e2e/rascunhos.spec.ts`, `e2e/momento-zero.spec.ts`, `e2e/helpers.ts`
+
+## Fase 3 — Levas de correção da `tmp/relacao_de_problema.md` (concluída)
+
+### Leva 1 — itens 4, 5, 7, 10, 12
+
+- [x] 3.1 (#12) Corrigir a home quebrada após reload
+  - [x] `.continueCover { position: relative }` + `.coverPlaceholder` não-absoluto
+  - [x] `ensureCover()` no autosave e `flushSession()` em `pagehide`/`visibilitychange`/`beforeunload`
+  - [x] Provedor de capa preserva seleção, edição inline e etapa (nunca restaura `step`)
+  - [x] Regressão em `e2e/regressoes.spec.ts`
+- [x] 3.2 (#4) `components/ui/PreviewImage.tsx` + `.module.css` + `previewImage.test.ts`
+  - [x] Spinner temático (anel preto/amarelo/barro), `0.9s linear infinite`, `1.6s` com movimento reduzido
+  - [x] Variantes `compact`/`full`; estados escopados por `src`; `<img>` invisível até `onLoad`
+  - [x] Adoção em `ThumbGrid`, `TextureStep`, `HomeScreen`, `SlideThumb`, `SlidePickerDialog`, `ImageStep`
+- [x] 3.3 (#10) `SlideTray` estático, altura reservada, `trayReady` (desativados + loading + timeout 1,5 s)
+- [x] 3.4 (#5) Ocultar "Formato do post" no carrossel; descrição condicional no Passo 1
+- [x] 3.5 (#7) `BODY_FONT_SIZE_MAX = 320` / `HEADING_FONT_SIZE_MAX = 4000`
+  - [x] `textRules.ts`, `multiSelect.ts` (`maxCap`), `EditorCanvas.tsx`, `TextStep.tsx`
+  - [x] Testes atualizados em `textRules.test.ts` e `multiSelect.test.ts`
+- [x] 3.6 Verificação na época da Leva 1: `typecheck`, 157 testes unitários, `build`, `e2e` 55 passed / 3 skipped (58 testes)
+
+### Leva 2 — itens 1, 2, 3, 6, 8, 9, 13 (implementados pelo Reni)
+
+- [x] 3.7 (#1) `components/ui/HelpTip.tsx` + `.module.css` — balão `(?)` com hover/foco/toque/`Escape`/clique fora
+- [x] 3.8 (#2) `showHeaderCreate` na home + `CREATE_SINGLE`/`CREATE_CAROUSEL` em `e2e/helpers.ts` e specs atualizadas
+- [x] 3.9 (#3) `components/BackgroundMirrorToolbar.tsx` no dock; card "Opções do Fundo" removido; corte 1:1 inline
+- [x] 3.10 (#6) 12 labels padronizados em `DECOR_OVERRIDES` + manifesto regerado; `id`s preservados
+- [x] 3.11 (#8) `scrollbar-color`/`scrollbar-width` em `global.css` + `:active`/`-corner` + `summary:focus-visible`
+- [x] 3.12 (#9) `renameActiveDraft()` em `session.ts` + `<h1>` editável inline no `Header.tsx`
+- [x] 3.13 (#13) `enableAllFinishes()` (um `set`/um undo) + prévias em `<details>` na `TextureStep.tsx`
+- [x] 3.14 Regressões em `e2e/regressoes.spec.ts` (balão, estado vazio, espelhamento, rename, dropdown, "Ativar todas", scrollbar)
+- [x] 3.15 Verificação final (10/11/2026): `typecheck` OK, **159 testes** unitários (15 arquivos), `build` OK, `e2e` **63 passed / 3 skipped** (66 testes, 2 projetos)

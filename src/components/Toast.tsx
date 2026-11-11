@@ -11,7 +11,7 @@ export const Toast: React.FC = () => {
     if (!toast) return;
     const timer = setTimeout(() => {
       dismissToast();
-    }, 4000);
+    }, toast.duration ?? (toast.action ? 8000 : 4000));
     return () => clearTimeout(timer);
   }, [toast, dismissToast]);
 
@@ -34,6 +34,19 @@ export const Toast: React.FC = () => {
         <Icon size={20} strokeWidth={3} />
       </div>
       <span className={styles.message}>{toast.message}</span>
+      {toast.action && (
+        <button
+          type="button"
+          className={styles.action}
+          onClick={() => {
+            const action = toast.action;
+            dismissToast();
+            action?.onClick();
+          }}
+        >
+          {toast.action.label}
+        </button>
+      )}
       <button
         type="button"
         className={styles.close}

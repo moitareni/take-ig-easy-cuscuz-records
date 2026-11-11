@@ -1,4 +1,9 @@
-import { BODY_MAX_WITHOUT_HEADING, FONT_SIZE_MAX, FONT_SIZE_MIN } from '../brand/brand';
+import {
+  BODY_FONT_SIZE_MAX,
+  BODY_MAX_WITHOUT_HEADING,
+  FONT_SIZE_MIN,
+  HEADING_FONT_SIZE_MAX,
+} from '../brand/brand';
 import type { El, TextEl } from '../types';
 
 const isText = (e: El): e is TextEl => e.kind === 'text';
@@ -16,19 +21,31 @@ export interface SizeLimits {
 
 /**
  * Limites de tamanho para um texto, dado o restante do post.
- * - Texto (body): máx = menor Título/Destaque; sem títulos = 72px.
- * - Título/Destaque: mín = maior Texto.
+ * - Texto (body): máx = menor Título/Destaque, sem passar do teto de corpo;
+ *   sem títulos = 72px.
+ * - Título/Destaque: mín = maior Texto; máx = teto técnico de título.
  */
 export function textSizeLimits(elements: El[], target: Pick<TextEl, 'id' | 'style'>): SizeLimits {
   const others = elements.filter(isText).filter((t) => t.id !== target.id);
   if (target.style === 'body') {
     const headings = others.filter(isHeading);
-    if (headings.length === 0) return { min: FONT_SIZE_MIN, max: BODY_MAX_WITHOUT_HEADING, reason: 'noHeading' };
-    return { min: FONT_SIZE_MIN, max: Math.min(...headings.map(effectiveSize)), reason: 'heading' };
+    if (headings.length === 0) {
+      return { min: FONT_SIZE_MIN, max: BODY_MAX_WITHOUT_HEADING, reason: 'noHeading' };
+    }
+    const headingCap = Math.min(...headings.map(effectiveSize));
+    // Um título pode passar de 320px; o corpo não acompanha essa liberdade.
+    const cap = Math.min(BODY_FONT_SIZE_MAX, headingCap);
+    return { min: FONT_SIZE_MIN, max: cap, reason: cap < headingCap ? 'absolute' : 'heading' };
   }
   const bodies = others.filter((t) => !isHeading(t));
-  if (bodies.length === 0) return { min: FONT_SIZE_MIN, max: FONT_SIZE_MAX, reason: 'absolute' };
-  return { min: Math.max(FONT_SIZE_MIN, ...bodies.map(effectiveSize)), max: FONT_SIZE_MAX, reason: 'body' };
+  if (bodies.length === 0) {
+    return { min: FONT_SIZE_MIN, max: HEADING_FONT_SIZE_MAX, reason: 'absolute' };
+  }
+  return {
+    min: Math.max(FONT_SIZE_MIN, ...bodies.map(effectiveSize)),
+    max: HEADING_FONT_SIZE_MAX,
+    reason: 'body',
+  };
 }
 
 export interface ClampResult {
@@ -46,7 +63,7 @@ export function clampTextSize(elements: El[], target: Pick<TextEl, 'id' | 'style
         ? 'Opa! O texto não pode ficar maior que o título 🙈'
         : reason === 'noHeading'
           ? `Opa! Sem título no post, o texto vai até ${BODY_MAX_WITHOUT_HEADING}px 🙈`
-          : `Esse é o tamanho máximo (${FONT_SIZE_MAX}px) 🙈`;
+          : `Esse é o tamanho máximo (${Math.floor(max)}px) 🙈`;
     return { value: Math.floor(max), error };
   }
   if (r < min) {

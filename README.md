@@ -1,8 +1,9 @@
 # Cuscuz Records Insta Kit
 
-Gerador de posts 3:4 (1080×1440) para o feed do Instagram com a identidade visual
-da Cuscuz Records. App 100% estático (React + Vite + Konva), sem back-end — veja o
-manual completo em `../AGENTS.md`.
+Gerador de posts e carrosséis para o feed do Instagram (3:4, 4:3 e 1:1) com a
+identidade visual da Cuscuz Records. App 100% estático (React + Vite + Konva), sem
+back-end: os rascunhos ficam no IndexedDB do navegador e a home "Meus rascunhos" é
+a tela inicial. Veja o manual completo em `AGENTS.md` (nesta mesma pasta).
 
 ## Comandos
 

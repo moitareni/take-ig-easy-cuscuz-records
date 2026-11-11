@@ -16,6 +16,12 @@ import {
 } from 'lucide-react';
 import { IMAGE_MAX_COUNT } from '../brand/brand';
 import { importImageFiles } from '../lib/imageImport';
+import {
+  announceCanvasActivity,
+  beginImageImport,
+  endImageImport,
+  preloadImage,
+} from '../lib/useImage';
 import { getUserImageEntry, importUserImage, registerProcessedImage, useUserImage } from '../lib/userImages';
 import { bgModelSizeHint, bgUsesWebGPU, removeBackground } from '../lib/bgRemoval';
 import {
@@ -30,6 +36,7 @@ import type { ImageEl, ImageMeta } from '../types';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { IconButton } from '../components/ui/IconButton';
+import { PreviewImage } from '../components/ui/PreviewImage';
 import styles from './StepPanel.module.css';
 import localStyles from './ImageStep.module.css';
 
@@ -262,11 +269,13 @@ const ImageRow: React.FC<{
         onClick={onSelect}
         title={el.name}
       >
-        <img
+        <PreviewImage
           src={entry?.thumbUrl}
           alt=""
           className={localStyles.rowThumb}
-          style={entry ? undefined : { visibility: 'hidden' }}
+          imgClassName={localStyles.rowThumbImage}
+          fallback={<span className={localStyles.rowThumbEmpty}>—</span>}
+          eager
         />
         <span className={localStyles.rowLabel}>
           {entry ? el.name : `${el.name} (indisponível)`}
@@ -351,8 +360,11 @@ export const ImageStep: React.FC = () => {
     if (replaceButtonRef.current) replaceButtonRef.current.value = '';
     if (!file || !selectedImage) return;
     setBusyFiles(1);
+    beginImageImport(1);
+    announceCanvasActivity('image', 'Trocando sua foto... 📸');
     try {
       const { entry } = await importUserImage(file);
+      await preloadImage(entry.url);
       useEditor
         .getState()
         .replaceImage(selectedImage.id, { imageId: entry.id, name: entry.name, width: entry.width, height: entry.height });
@@ -360,6 +372,7 @@ export const ImageStep: React.FC = () => {
     } catch {
       showToast('error', 'Não consegui ler essa imagem 🙈 Tenta outra!');
     } finally {
+      endImageImport(1);
       setBusyFiles(0);
     }
   };

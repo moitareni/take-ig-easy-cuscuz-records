@@ -135,7 +135,14 @@ export const BORDER_PAD = { x: 0.38, y: 0.2 } as const;
 /** Regra: Texto (body) nunca maior que Título/Destaque. Sem títulos no post, limite fixo. */
 export const BODY_MAX_WITHOUT_HEADING = 72;
 export const FONT_SIZE_MIN = 16;
-export const FONT_SIZE_MAX = 320;
+/** Teto do corpo: mesmo com um título enorme, o texto de apoio não acompanha. */
+export const BODY_FONT_SIZE_MAX = 320;
+/**
+ * Teto técnico de títulos/destaques: libera artes com tipografia grande sem
+ * permitir valores que travem o canvas ou o export. Não é um limite de design —
+ * a regra de marca é apenas "Texto ≤ Título" (AGENTS.md §2.6).
+ */
+export const HEADING_FONT_SIZE_MAX = 4000;
 
 /**
  * Canto "natural" de cada enfeite (como foi desenhado), usado no posicionamento rápido

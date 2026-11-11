@@ -26,9 +26,9 @@ export const TextureOverlays: React.FC<TextureOverlaysProps> = ({
   postHeight = POST_H,
 }) => {
   const paper = getPaperTexture();
-  const [paperImage] = useImage(paper?.src);
+  const [paperImage] = useImage(finish.paper.enabled ? paper?.src : null);
   const border = getBorderTexture();
-  const [borderImage] = useImage(border?.src);
+  const [borderImage] = useImage(finish.borderTexture?.enabled ? border?.src : null);
   // Mesmo tile com seed fixa no preview e no export: grão idêntico.
   const grainTile = useMemo(() => makeGrainTile(GRAIN_TILE_SIZE, GRAIN_SEED), []);
   const patternScale = GRAIN_SIZES[finish.grain.size]?.patternScale ?? 1;

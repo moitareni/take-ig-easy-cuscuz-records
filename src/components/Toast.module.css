@@ -40,6 +40,28 @@
   line-height: 1.2;
 }
 
+.action {
+  flex: none;
+  background-color: #ffffff;
+  color: var(--c-preto);
+  border: 2px solid var(--c-border);
+  border-radius: var(--radius-pill);
+  padding: 4px 12px;
+  font-family: var(--font-headline);
+  font-size: 15px;
+  box-shadow: 0 2px 0 var(--c-border);
+  transition: transform var(--duration-fast) var(--ease-bounce);
+}
+
+.action:hover {
+  transform: translateY(-1px);
+}
+
+.action:active {
+  transform: translateY(1px);
+  box-shadow: none;
+}
+
 .close {
   background: transparent;
   border: none;

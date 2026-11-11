@@ -8,7 +8,7 @@ import {
   Trash2,
   Type,
 } from 'lucide-react';
-import { FONT_SIZE_MAX, FONT_SIZE_MIN } from '../brand/brand';
+import { FONT_SIZE_MIN, HEADING_FONT_SIZE_MAX } from '../brand/brand';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { ColorSwatches } from '../components/ui/ColorSwatches';
@@ -35,7 +35,7 @@ export const TextStep: React.FC = () => {
   // Calcula os limites de tamanho do texto selecionado para o slider
   const limits = selectedText
     ? textSizeLimits(elements, selectedText)
-    : { min: FONT_SIZE_MIN, max: FONT_SIZE_MAX, reason: 'absolute' as const };
+    : { min: FONT_SIZE_MIN, max: HEADING_FONT_SIZE_MAX, reason: 'absolute' as const };
 
   return (
     <div className={styles.container}>

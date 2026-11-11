@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { IMAGE_MAX_COUNT } from '../brand/brand';
+import {
+  BODY_FONT_SIZE_MAX,
+  HEADING_FONT_SIZE_MAX,
+  IMAGE_MAX_COUNT,
+} from '../brand/brand';
 import type { El, ImageEl, LogoEl, TextEl } from '../types';
 import {
   applyElPatches,
@@ -89,11 +93,12 @@ describe('geometria', () => {
 });
 
 describe('groupScaleBounds (Texto ≤ Título em conjunto)', () => {
-  it('só título + texto selecionados, sem outros: razão preservada, só limites absolutos', () => {
+  it('só título + texto selecionados: o corpo é o limite de cima (título chega a 4000px)', () => {
     const els = [text('h', 'title', 100), text('b', 'body', 50)];
     const b = groupScaleBounds(els, ['h', 'b']);
     expect(b.min).toBeCloseTo(16 / 50);
-    expect(b.max).toBeCloseTo(320 / 100);
+    expect(b.max).toBeCloseTo(BODY_FONT_SIZE_MAX / 50);
+    expect(b.maxCap).toBe(BODY_FONT_SIZE_MAX);
   });
   it('só corpo selecionado e há título fora: teto = título', () => {
     const els = [text('h', 'title', 100), text('b', 'body', 50)];
@@ -115,17 +120,30 @@ describe('groupScaleBounds (Texto ≤ Título em conjunto)', () => {
   });
   it('sem texto selecionado: sem limites', () => {
     const b = groupScaleBounds([text('b', 'body', 50), deco('d')], ['d']);
-    expect(b).toEqual({ min: 0, max: Infinity, minReason: null, maxReason: null });
+    expect(b).toEqual({
+      min: 0,
+      max: Infinity,
+      minReason: null,
+      maxReason: null,
+      maxCap: BODY_FONT_SIZE_MAX,
+    });
   });
   it('limites cruzados (doc inconsistente) travam em 1', () => {
     const els = [text('h', 'title', 40), text('b', 'body', 60), text('h2', 'title', 200)];
     // h selecionado: piso = 60/40=1.5; b selecionado ... teto = menor título FORA (h2=200)/60 → >1.5, ok
     const ok = groupScaleBounds(els, ['h']);
     expect(ok.min).toBeCloseTo(1.5);
-    const cross = groupScaleBounds([text('h', 'title', 20), text('b', 'body', 30), text('b2', 'body', 400)], ['h']);
-    // piso 400/20 = 20 > teto absoluto 320/20 = 16 → cruza
+    const cross = groupScaleBounds([text('h', 'title', 20), text('b', 'body', 30), text('b2', 'body', 9000)], ['h']);
+    // piso 9000/20 = 450 > teto técnico de título 4000/20 = 200 → cruza
     expect(cross.min).toBe(1);
     expect(cross.max).toBe(1);
+  });
+
+  it('título selecionado sobe até o teto técnico de título', () => {
+    const els = [text('h', 'title', 100)];
+    const b = groupScaleBounds(els, ['h']);
+    expect(b.max).toBeCloseTo(HEADING_FONT_SIZE_MAX / 100);
+    expect(b.maxCap).toBe(HEADING_FONT_SIZE_MAX);
   });
   it('arredondar fonte no teto nunca viola a regra (corpo ≤ título)', () => {
     const els = [text('h', 'title', 73), text('b', 'body', 37), deco('d')];
@@ -140,16 +158,31 @@ describe('groupScaleBounds (Texto ≤ Título em conjunto)', () => {
     expect(groupLimitMessage('noHeading', 'max')).toBe(clampTextSize(noTitle, noTitle[0], 999).error);
     expect(groupLimitMessage('body', 'min')).toBe(clampTextSize(els, els[0], 1).error);
     expect(groupLimitMessage('absolute', 'min')).toBe(clampTextSize([els[0]], els[0], 1).error);
-    expect(groupLimitMessage('absolute', 'max')).toBe(clampTextSize([els[0]], els[0], 9999).error);
+    expect(groupLimitMessage('absolute', 'max', HEADING_FONT_SIZE_MAX)).toBe(
+      clampTextSize([els[0]], els[0], 9999).error,
+    );
+    const bigHeading = [text('h', 'title', 1000)];
+    expect(groupLimitMessage('absolute', 'max', BODY_FONT_SIZE_MAX)).toBe(
+      clampTextSize(bigHeading, { id: 'b1', style: 'body' }, 9999).error,
+    );
     expect(groupLimitMessage(null, 'max')).toBeNull();
   });
 });
 
 describe('enforceTextRule', () => {
-  it('limita corpo ao menor título e todo texto a 16–320', () => {
+  it('limita corpo ao menor título/teto de corpo, mas preserva título grande', () => {
     const out = enforceTextRule([text('h', 'title', 60), text('b', 'body', 90), text('t', 'highlight', 500)]) as TextEl[];
     expect(out.find((t) => t.id === 'b')!.fontSize).toBe(60);
-    expect(out.find((t) => t.id === 't')!.fontSize).toBe(320);
+    expect(out.find((t) => t.id === 't')!.fontSize).toBe(500);
+  });
+  it('corpo nunca acompanha um título acima de 320px', () => {
+    const out = enforceTextRule([text('h', 'title', 1200), text('b', 'body', 900)]) as TextEl[];
+    expect(out.find((t) => t.id === 'h')!.fontSize).toBe(1200);
+    expect(out.find((t) => t.id === 'b')!.fontSize).toBe(BODY_FONT_SIZE_MAX);
+  });
+  it('título respeita o teto técnico de 4000px', () => {
+    const out = enforceTextRule([text('h', 'title', 9000)]) as TextEl[];
+    expect(out[0].fontSize).toBe(HEADING_FONT_SIZE_MAX);
   });
   it('sem título: corpo ≤ 72', () => {
     const out = enforceTextRule([text('b', 'body', 90)]) as TextEl[];

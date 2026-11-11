@@ -1,17 +1,17 @@
-import type { ImageEl, SlideData } from '../types';
+import type { Doc, SlideData } from '../types';
+
+export function collectDocImageIds(doc: Doc, ids = new Set<string>()): Set<string> {
+  for (const el of doc.elements) {
+    if (el.kind !== 'image') continue;
+    ids.add(el.imageId);
+    if (el.cutFrom?.imageId) ids.add(el.cutFrom.imageId);
+  }
+  return ids;
+}
 
 export function collectAllImageIds(slides: SlideData[]): Set<string> {
   const ids = new Set<string>();
-  for (const slide of slides) {
-    for (const el of slide.doc.elements) {
-      if (el.kind === 'image') {
-        ids.add(el.imageId);
-        if ((el as ImageEl).cutFrom?.imageId) {
-          ids.add((el as ImageEl).cutFrom!.imageId);
-        }
-      }
-    }
-  }
+  for (const slide of slides) collectDocImageIds(slide.doc, ids);
   return ids;
 }
 

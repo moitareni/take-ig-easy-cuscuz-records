@@ -99,7 +99,7 @@
     {
       "id": "flores",
       "category": "enfeite",
-      "label": "Flores",
+      "label": "Arabesco floral",
       "src": "/brand/deco-flores.webp",
       "width": 357,
       "height": 459,
@@ -108,7 +108,7 @@
     {
       "id": "folhas-1",
       "category": "enfeite",
-      "label": "Folhas 1",
+      "label": "Folhagem rendada",
       "src": "/brand/deco-folhas-1.webp",
       "width": 152,
       "height": 348,
@@ -117,7 +117,7 @@
     {
       "id": "folhas-2",
       "category": "enfeite",
-      "label": "Folhas 2",
+      "label": "Vinha vertical",
       "src": "/brand/deco-folhas-2.webp",
       "width": 153,
       "height": 1023,
@@ -126,7 +126,7 @@
     {
       "id": "ondas-1",
       "category": "enfeite",
-      "label": "Ondas 1",
+      "label": "Onda de canto",
       "src": "/brand/deco-ondas-1.webp",
       "width": 618,
       "height": 410,
@@ -135,7 +135,7 @@
     {
       "id": "ondas-2",
       "category": "enfeite",
-      "label": "Ondas 2",
+      "label": "Traço ondulado",
       "src": "/brand/deco-ondas-2.webp",
       "width": 1072,
       "height": 100,
@@ -144,7 +144,7 @@
     {
       "id": "grade",
       "category": "enfeite",
-      "label": "Grade",
+      "label": "Trama amarela",
       "blend": "soft-light",
       "fullSheet": true,
       "src": "/brand/deco-grade.webp",
@@ -155,7 +155,7 @@
     {
       "id": "sobrepor",
       "category": "enfeite",
-      "label": "Sobrepor",
+      "label": "Xadrez amarelo",
       "fullSheet": true,
       "src": "/brand/deco-sobrepor.webp",
       "width": 1080,
@@ -165,7 +165,7 @@
     {
       "id": "chain",
       "category": "grafismo",
-      "label": "CHAIN",
+      "label": "Faixa de espinhos",
       "src": "/brand/deco-chain.webp",
       "width": 1041,
       "height": 210,
@@ -174,7 +174,7 @@
     {
       "id": "esqueleto",
       "category": "grafismo",
-      "label": "ESQUELETO",
+      "label": "Esqueleto solar",
       "src": "/brand/deco-esqueleto.webp",
       "width": 679,
       "height": 668,
@@ -183,7 +183,7 @@
     {
       "id": "mp3player",
       "category": "grafismo",
-      "label": "MP3PLAYER",
+      "label": "Tocador retrô",
       "src": "/brand/deco-mp3player.webp",
       "width": 617,
       "height": 691,
@@ -192,7 +192,7 @@
     {
       "id": "papel-divisao",
       "category": "grafismo",
-      "label": "Papel divisão",
+      "label": "Fita de papel verde",
       "blend": "divide",
       "src": "/brand/deco-papel-divisao.webp",
       "width": 470,
@@ -202,7 +202,7 @@
     {
       "id": "janela",
       "category": "janela",
-      "label": "Janela",
+      "label": "Janela retrô",
       "src": "/brand/deco-janela.webp",
       "width": 896,
       "height": 769,

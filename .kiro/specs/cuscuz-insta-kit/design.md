@@ -1,5 +1,21 @@
 # Documento de Design Técnico — Cuscuz Records Insta Kit
 
+> **Revisão 10/11/2026 — release v3 "Meus rascunhos" + levas de correção 1, 2 e 3.**
+> Este documento descreve o desenho da implementação de base. O diagrama de fluxo e
+> a seção "Estrutura de Dados Principal" abaixo usam `localStorage` como destino do
+> `Doc`; **isso não é mais verdade**. O estado persistido agora vive no `DraftBody`
+> do rascunho ativo em IndexedDB (`src/lib/drafts/`), e `useEditor`/`useCarousel`
+> são stores de sessão em memória. Ver o apêndice "Arquitetura v3" no final deste
+> documento e `AGENTS.md` (fonte de verdade). Numeração: aqui as etapas são 0–5;
+> na UI e no `AGENTS.md` são 1–6.
+>
+> **Leva 3 (10/11/2026) — o que prevalece**
+> - **Header/Dock**: logo da Cuscuz e botão "Começar do zero" removidos do Header; selo de autosave ao lado do título; `ModeDropdown` vem **antes** de `Exportar`/`Exportação`; Desfazer/Refazer ficam na base do dock direito.
+> - **Renomear sem salto**: título editável como pílula creme (sem borda/outline, auto-dimensionada, máx. 80 caracteres, texto selecionado ao focar) no Header **e** no card da home (clique no título ou no lápis "Renomear"); o card ganhou o botão direto "Exportar".
+> - **Seleção** de texto/realces em amarelo da marca (`--c-amarelo`); scrollbars finas e arredondadas em todos os navegadores (`FirefoxRoundScrollbar`).
+> - **Logo**: presets de posição seguem `layoutGuides.margin` (ou 0 com guias/margens desativadas).
+> - **Feedback de carregamento**: selo temático `canvas-busy-overlay` sobre a folha ao trocar fundo / adicionar enfeite, foto, logo ou textura (mín. 280 ms), spinner na miniatura escolhida, `preloadImage` em hover/foco, pré-decode das fotos importadas e texturas globais carregadas **só quando ligadas**. Ver `AGENTS.md` §2.14 e §2.17.
+
 ## Visão Geral
 
 O **Cuscuz Records Insta Kit** é uma aplicação web estática de editor de posts para Instagram. Todo o processamento — incluindo renderização de canvas, exportação de imagem, armazenamento de blobs e remoção de fundo por IA — ocorre 100% no navegador do usuário, sem servidor de backend.
@@ -17,7 +33,7 @@ O **Cuscuz Records Insta Kit** é uma aplicação web estática de editor de pos
 
 ## Estrutura de Dados Principal
 
-### `Doc` — estado persistido no localStorage
+### `Doc` — estado persistido no `DraftBody` (IndexedDB, release v3)
 
 ```typescript
 interface Doc {
@@ -86,7 +102,7 @@ interface FinishState {
 }
 ```
 
-Todos os campos de `FinishState` são inicializados com `enabled: false` (`FINISH_ENABLED_DEFAULT`). `Doc` + `FinishState` são serializados juntos na chave `cuscuz-insta-kit:rascunho` do localStorage (sem blobs — somente metadados).
+Todos os campos de `FinishState` são inicializados com `enabled: false` (`FINISH_ENABLED_DEFAULT`). **`Doc` + `FinishState` são serializados juntos dentro do `DraftBody` do rascunho ativo, no store `documents` do IndexedDB** (sem blobs — somente metadados). A chave `cuscuz-insta-kit:rascunho` do `localStorage` é legada e apenas migrada. Ver Revisão no topo e apêndice "Arquitetura v3".
 
 ---
 
@@ -94,7 +110,7 @@ Todos os campos de `FinishState` são inicializados com `enabled: false` (`FINIS
 
 ### `src/brand/brand.ts` — Fonte da Verdade da Identidade Visual
 
-Exporta todas as constantes da marca: `COLORS`, `FONT_HEADLINE`, `FONT_BODY`, `TEXT_PRESETS`, `BRAND_EFFECT`, `BORDERS`, `BORDER_PAD`, `POST_FORMATS`, `getPostDimensions`, limites de fonte (`FONT_SIZE_MIN`/`MAX`, `BODY_MAX_WITHOUT_HEADING`), limites de imagem (`IMAGE_MAX_COUNT`, `IMAGE_MAX_SIDE`, `IMAGE_MAX_FILE_BYTES`), constantes de granulado (`GRAIN_SEED`, `GRAIN_TILE_SIZE`, `GRAIN_STDDEV`), guias de layout (`GUIDE_MARGIN_DEFAULT`, `GUIDE_SNAP_THRESHOLD`, `GUIDE_COLORS`) e zoom (`ZOOM_STEPS`).
+Exporta todas as constantes da marca: `COLORS`, `FONT_HEADLINE`, `FONT_BODY`, `TEXT_PRESETS`, `BRAND_EFFECT`, `BORDERS`, `BORDER_PAD`, `POST_FORMATS`, `getPostDimensions`, limites de fonte (`FONT_SIZE_MIN`, `BODY_FONT_SIZE_MAX`, `HEADING_FONT_SIZE_MAX`, `BODY_MAX_WITHOUT_HEADING`), limites de imagem (`IMAGE_MAX_COUNT`, `IMAGE_MAX_SIDE`, `IMAGE_MAX_FILE_BYTES`), constantes de granulado (`GRAIN_SEED`, `GRAIN_TILE_SIZE`, `GRAIN_STDDEV`), constantes de carrossel (`CAROUSEL_MAX_SLIDES`, `CAROUSEL_THUMB_WIDTH`, `CAROUSEL_THUMB_DEBOUNCE`), guias de layout (`GUIDE_MARGIN_DEFAULT`, `GUIDE_SNAP_THRESHOLD`, `GUIDE_COLORS`) e zoom (`ZOOM_STEPS`). **Não existe mais `FONT_SIZE_MAX`** — os tetos são por estilo.
 
 Nenhum outro módulo deve definir constantes de marca — toda mudança de identidade visual passa aqui.
 
@@ -104,7 +120,7 @@ Re-exporta tipos de `brand.ts` e define `El`, `Doc`, `FinishState`, `Box`, `Alig
 
 ### `src/store/editorStore.ts` — Estado Global (Zustand + zundo)
 
-**Estado persistido** (partializa no localStorage e no histórico temporal):
+**Estado persistido** (entra no histórico temporal via `partialize`, e é gravado no `DraftBody`/IndexedDB pelo autosave — não mais diretamente em `localStorage`):
 - `doc: Doc` — o post em si
 - `finish: FinishState` — os acabamentos
 
@@ -372,25 +388,29 @@ O preview do canvas e a exportação usam o **mesmo Stage Konva** — somente o 
 
 ## Persistência e Inicialização
 
-### localStorage
-- Chave: `cuscuz-insta-kit:rascunho`
-- Conteúdo: `{ doc: Doc, finish: FinishState }` (JSON puro, sem blobs)
-- Escrita com debounce 300 ms + flush no `beforeunload`
+### localStorage (histórico / legado)
+- Chave antiga: `cuscuz-insta-kit:rascunho` (`{ doc, finish }`) e `cuscuz-insta-kit:carrossel`
+- **Hoje só é lido por `migrateLegacyDrafts()`**, de forma idempotente, e mantido como rollback; o app não escreve mais nessas chaves
+- O `localStorage` restante guarda apenas preferências de UI (ex.: último modo de remoção de fundo)
 
-### IndexedDB
-- Banco: `cuscuz-insta-kit`, versão 1, store `images`
-- Registro: `{ id, blob, thumb, name, width, height, createdAt }`
-- Blobs não são revogados ao excluir elemento (undo precisa deles); GC roda no boot
+### IndexedDB (estado atual)
+- Banco: `cuscuz-insta-kit`, **versão 2**
+- Stores: `images` (blobs do usuário), `drafts` (`DraftMeta`), `documents` (`DraftBody`), `covers` (capa WebP), `meta` (marcador de migração)
+- `documents`: `SingleDraftBody { doc, finish }` ou `CarouselDraftBody { slides, activeSlideIndex, format }`
+- Escrita com autosave debounced **450 ms** + `flushSession()` em `visibilitychange`/`pagehide`/`beforeunload`
+- `navigator.locks` por rascunho + `BroadcastChannel` para sincronizar abas
+- Blobs não são revogados ao excluir elemento (undo precisa deles); GC roda no boot considerando **todos** os rascunhos/slides
 
 ### Sequência de boot
 
 ```
-1. Zustand hydrate (merge + sanitize + sanitizeFinish)
-2. temporal.clear()           ← histórico limpo após restaurar rascunho
-3. hydrateUserImages()        ← carrega blobs do IndexedDB, retorna Set<string>
-4. reconcileImages(availableIds) ← remove ImageEl sem blob do doc
-5. collectGarbageImages(keep) ← remove blobs órfãos do IndexedDB
-6. (opcional) adicionar snapshot inicial ao temporal para capturar rascunho reconciliado
+1. `migrateLegacyDrafts()`    ← chaves localStorage antigas → IndexedDB (idempotente)
+2. `getAllDraftRecords()`     ← união de DraftMeta + DraftBody (sanitizados)
+3. `collectGarbageImages(união de imageIds)` ← GC considerando TODOS os rascunhos/slides
+4. `setDrafts()` + `setScreen('home')` ← home "Meus rascunhos" liberada
+5. `openDraft(id)`            ← `loadUserImages`, `reconcileBodyImages`,
+                                `applyBodyToStores` (doc/finish ou slides), `temporal.clear()`
+6. `installDraftSession()`    ← subscribers de autosave executam desde o boot
 ```
 
 ---
@@ -439,7 +459,8 @@ A hierarquia tipográfica é mantida por `clampTextSize()` (única porta de escr
 - `body.fontSize ≤ min(title.fontSize, highlight.fontSize)` para todos os títulos do post
 - Sem títulos: `body.fontSize ≤ BODY_MAX_WITHOUT_HEADING` (72 px)
 - `title/highlight.fontSize ≥ max(body.fontSize)` para todos os corpos do post
-- `FONT_SIZE_MIN (16) ≤ qualquer fontSize ≤ FONT_SIZE_MAX (320)`
+- `FONT_SIZE_MIN (16) ≤ body.fontSize ≤ BODY_FONT_SIZE_MAX (320)`
+- `FONT_SIZE_MIN (16) ≤ title/highlight.fontSize ≤ HEADING_FONT_SIZE_MAX (4000)` (teto técnico)
 
 ### Regra do Fundo Travado (Req. 1.6–1.7)
 
@@ -550,7 +571,7 @@ O `BackgroundNode` recebe `draggable={step === 0}` e `listening={step === 0}`. O
 - Se `target.style === 'body'` e existem títulos: `value ≤ min(effectiveSize(heading))` para todos os headings
 - Se `target.style === 'body'` e não existem títulos: `value ≤ BODY_MAX_WITHOUT_HEADING` (72 px)
 - Se `target.style !== 'body'` e existem bodies: `value ≥ max(effectiveSize(body))` para todos os bodies
-- Em todos os casos: `FONT_SIZE_MIN ≤ value ≤ FONT_SIZE_MAX`
+- Em todos os casos: `FONT_SIZE_MIN ≤ value ≤ BODY_FONT_SIZE_MAX` para corpo e `FONT_SIZE_MIN ≤ value ≤ HEADING_FONT_SIZE_MAX` para títulos/destaques
 
 **Valida: Requisitos 5.5, 5.6, 5.7, 5.8, 5.11**
 
@@ -558,7 +579,7 @@ O `BackgroundNode` recebe `draggable={step === 0}` e `listening={step === 0}`. O
 
 ### Propriedade 12: enforceTextRule garante consistência global de fontes
 
-*Para qualquer lista de elementos* `El[]`, após `enforceTextRule(elements)` a lista resultante deve satisfazer a regra Texto ≤ Título para todos os pares de body/heading presentes, e nenhum `fontSize` deve estar fora de `[FONT_SIZE_MIN, FONT_SIZE_MAX]`.
+*Para qualquer lista de elementos* `El[]`, após `enforceTextRule(elements)` a lista resultante deve satisfazer a regra Texto ≤ Título para todos os pares de body/heading presentes, e nenhum `fontSize` deve estar fora de `[FONT_SIZE_MIN, BODY_FONT_SIZE_MAX]` (corpo) ou `[FONT_SIZE_MIN, HEADING_FONT_SIZE_MAX]` (títulos/destaques).
 
 **Valida: Requisitos 5.5, 5.6, 5.11, 8.8**
 
@@ -617,3 +638,82 @@ O `BackgroundNode` recebe `draggable={step === 0}` e `listening={step === 0}`. O
 *Para qualquer caixa `Box`* e *para qualquer modo de alinhamento*, a caixa deslocada por `(dx, dy) = alignDelta(box, mode, pageW, pageH)` deve estar perfeitamente alinhada à borda ou centro correspondente da página (erro zero em ponto flutuante, exceto arredondamento de sub-pixel).
 
 **Valida: Requisito 10 (AlignToolbar), Requisito 8.10**
+
+---
+
+## Apêndice — Arquitetura v3 e componentes atuais (10/11/2026)
+
+### Fluxo de telas e persistência
+
+```
+main.tsx
+  ├─ installDraftSession()   → subscribers de autosave (editor/carousel)
+  └─ bootDrafts()            → migrateLegacyDrafts() → getAllDraftRecords()
+                             → collectGarbageImages() → setScreen('home')
+        │
+        ▼
+App.tsx (screen)
+  ├─ 'boot'   → placeholder
+  ├─ 'home'   → screens/HomeScreen.tsx   (Meus rascunhos)
+  └─ 'editor' → screens/EditorScreen.tsx (6 etapas + dock + SlideTray)
+        │
+        ▼
+lib/drafts/session.ts  ·  activeId/activeMeta/isNewDraft/dirty/saveChain
+  ├─ persistIfDirty() → repository.saveDraftRecord() → IndexedDB
+  │     stores: drafts (DraftMeta) · documents (DraftBody) · covers (Blob)
+  │             · meta (migração) · images (blobs do usuário)
+  ├─ ensureCover() / captureAndSaveCover() → capa WebP 480 px
+  ├─ flushSession() em visibilitychange / pagehide / beforeunload
+  └─ navigator.locks + BroadcastChannel('cuscuz-insta-kit:drafts')
+        │
+        ▼
+useEditor (doc/finish, zundo)  ◄──► useCarousel (slides/format/mode)
+        subscriber em main.tsx: updateActiveSlide(doc, finish)
+```
+
+`DraftBody` é união discriminada: `SingleDraftBody { doc, finish }` ou
+`CarouselDraftBody { slides: SlideData[], activeSlideIndex, format }`.
+`DRAFT_SCHEMA_VERSION = 2`; `sanitizeDraftMeta`/`sanitizeDraftBody` validam tudo
+que volta do IndexedDB. Migração legada (chaves `localStorage` antigas) é
+idempotente, guiada por marcador em `META_STORE`, e **não apaga** as chaves.
+
+### Stores
+
+| Store | Papel |
+|---|---|
+| `store/editorStore.ts` | `doc`, `finish`, seleção, etapa, guias, zoom, toast; `temporal` com `partialize: {doc, finish}`, `limit: 50`, debounce 400 ms. Ações novas: `enableAllFinishes()`. |
+| `store/carouselStore.ts` | `slides`, `activeSlideIndex`, `format`, `mode`, progresso de exportação. **Sem `persist`.** |
+| `store/draftsStore.ts` | `screen`, lista, rascunho ativo, status/erro de save, aviso de armazenamento. |
+
+### Componentes novos (levas 1 e 2)
+
+| Componente | Papel |
+|---|---|
+| `components/ui/PreviewImage.tsx` | Prévia com skeleton/spinner temático; estados `empty/loading/loaded/error` escopados por `src`; variantes `compact`/`full`; `onStatusChange`. Usado em `ThumbGrid`, `TextureStep`, `HomeScreen`, `SlideThumb`, `SlidePickerDialog`, `ImageStep`. |
+| `components/ui/HelpTip.tsx` | Balão `(?)` com `role="tooltip"`, hover/foco/toque, `Escape` e clique fora. |
+| `components/BackgroundMirrorToolbar.tsx` | Espelhamento do fundo no dock (reusa `AlignToolbar.module.css`); visível só com `step === 0`, fundo escolhido e sem seleção. |
+| `components/carousel/SlideTray.tsx` | Import estático, `trayReady`, altura reservada (`min-height: 120px`), botões desativados + loading com timeout de 1,5 s. |
+| `components/carousel/SlideThumb.tsx` | `disabled`, `onPreviewReady`, fallback "Vazio"/spinner conforme o slide ativo. |
+| `screens/HomeScreen.tsx` | `showHeaderCreate = drafts.length > 0 \|\| listStatus !== 'ready'`; `HelpTip` no título da seção; capa contida em `.continueCover { position: relative }`. |
+| `components/Header.tsx` | Nome editável inline (`renameActiveDraft`), selo de autosave, `FormatGlyph`, dropdown de modo. |
+
+### Regras e constantes alteradas
+
+- `brand.ts`: `BODY_FONT_SIZE_MAX = 320`, `HEADING_FONT_SIZE_MAX = 4000`,
+  `FONT_SIZE_MIN = 16`, `BODY_MAX_WITHOUT_HEADING = 72`, `FINISH_ENABLED_DEFAULT = false`.
+  `textRules.ts`/`multiSelect.ts` aplicam tetos por estilo; `groupScaleBounds` expõe `maxCap`.
+- `scripts/build-assets.mjs`: `DECOR_OVERRIDES` com `label` para os 12 enfeites;
+  `id`s, `src`, `thumb`, `blend` e `fullSheet` inalterados. `npm run assets` reescreve
+  `src/assets-manifest.json` e `public/brand/`; as pastas raiz permanecem intocáveis.
+- `theme/global.css`: `scrollbar-color`/`scrollbar-width` em `html`,
+  `::-webkit-scrollbar*` completo, `summary:focus-visible` no seletor de foco.
+- `theme/tokens.css`: `--duration-loading: 0.9s`.
+- `steps/TextureStep.tsx`: `enableAllFinishes()` (um `set` = um undo) e `<details>` por prévia.
+- `steps/BackgroundStep.tsx`: seletor de formato só no post único; corte 1:1 inline.
+
+### Verificação
+
+`npm run typecheck` · `npm run test` (159 testes / 15 arquivos) · `npm run build` ·
+`npm run e2e` (**63 passed / 3 skipped**, 66 testes em 2 projetos; Playwright serve
+`dist/` na 4173 — **build obrigatório antes do e2e**).
+Regressões das duas levas em `e2e/regressoes.spec.ts` (7 casos × 2 projetos).

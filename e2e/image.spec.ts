@@ -2,14 +2,14 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect, test } from '@playwright/test';
-import { dismissModeSelector } from './helpers';
+import { startEditor } from './helpers';
 
 const FIXTURE = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures', 'foto.png');
 
 test.describe('Etapa 3 - Imagens do usuário', () => {
   test('upload, transformações, limite de 5 e export', async ({ page }) => {
     await page.goto('/');
-    await dismissModeSelector(page);
+    await startEditor(page);
 
     // Fundo obrigatório → Enfeites
     await page.locator('button[title*="Pronto 1"]').first().click();
@@ -65,7 +65,7 @@ test.describe('Etapa 3 - Imagens do usuário', () => {
     // Export com imagens na folha
     await page.getByRole('button', { name: /6\. Textura/ }).click();
     const downloadPromise = page.waitForEvent('download');
-    await page.locator('button[aria-label*="Baixar post"]').first().click();
+    await page.getByRole('button', { name: 'Exportar', exact: true }).click();
     const download = await downloadPromise;
     expect(download.suggestedFilename()).toMatch(/^cuscuz-post-\d{4}-\d{2}-\d{2}-\d{4}\.png$/);
     await expect(page.locator('text=Post salvo com sucesso!')).toBeVisible();
@@ -73,7 +73,7 @@ test.describe('Etapa 3 - Imagens do usuário', () => {
 
   test('solta arquivo direto na folha e importa na posição do cursor', async ({ page }) => {
     await page.goto('/');
-    await dismissModeSelector(page);
+    await startEditor(page);
 
     await page.locator('button[title*="Pronto 1"]').first().click();
     await page.locator('footer button:has-text("Próximo")').click();
@@ -110,7 +110,7 @@ test.describe('Etapa 3 - Imagens do usuário', () => {
     });
 
     await page.goto('/');
-    await dismissModeSelector(page);
+    await startEditor(page);
     await page.locator('button[title*="Pronto 1"]').first().click();
     await page.locator('footer button:has-text("Próximo")').click();
     await page.locator('footer button:has-text("Pular (sem enfeites)")').click();

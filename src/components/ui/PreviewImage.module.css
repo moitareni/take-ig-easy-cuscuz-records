@@ -1,0 +1,110 @@
+.wrapper {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background-color: var(--c-surface-muted);
+}
+
+/* O <img> existe desde o primeiro render para o browser continuar buscando,
+   mas só fica visível depois do onLoad: nada de `alt` cru na tela. */
+.image {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  transition: opacity var(--duration-normal) ease;
+}
+
+.imageLoaded {
+  opacity: 1;
+}
+
+.skeleton,
+.fallback {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Fundo de "papel de caderninho": creme com pontilhado barro, estático.
+   Nada de degradê em movimento misturado com a paleta da marca. */
+.skeleton {
+  padding: 8px;
+  background-color: var(--c-creme);
+  background-image: radial-gradient(circle, rgba(148, 41, 17, 0.14) 1.2px, transparent 1.2px);
+  background-size: 13px 13px;
+}
+
+.skeletonCompact {
+  padding: 4px;
+  background-image: none;
+}
+
+/* Selo adesivo: borda de 3px, sombra sólida e cantos de pílula — a mesma
+   linguagem dos botões e badges do design system. */
+.loadingBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 100%;
+  padding: 8px 16px;
+  border: 3px solid var(--c-border);
+  border-radius: var(--radius-pill);
+  background-color: var(--c-surface);
+  box-shadow: 0 4px 0 var(--c-border);
+}
+
+.spinner {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 3px solid var(--c-border);
+  border-top-color: var(--c-amarelo);
+  border-right-color: var(--c-barro);
+  animation: previewSpin var(--duration-loading) linear infinite;
+  will-change: transform;
+}
+
+/* Miniaturas: o anel acompanha o tamanho do container, sem rótulo. */
+.spinnerCompact {
+  width: min(40px, 45%);
+  height: auto;
+  aspect-ratio: 1;
+  border-width: 3px;
+}
+
+.loadingLabel {
+  font-family: var(--font-body);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--c-barro);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fallback {
+  text-align: center;
+}
+
+@keyframes previewSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* O giro é feedback de estado essencial (não enfeite): com "reduzir movimento"
+   ele continua, só que mais lento. As demais animações do app seguem a regra
+   global de movimento reduzido. */
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation-duration: 1.6s !important;
+    animation-iteration-count: infinite !important;
+  }
+}

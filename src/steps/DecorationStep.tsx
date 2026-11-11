@@ -5,6 +5,7 @@ import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { IconButton } from '../components/ui/IconButton';
 import { ThumbGrid } from '../components/ui/ThumbGrid';
+import { announceCanvasActivity } from '../lib/useImage';
 import { useEditor, useSelected } from '../store/editorStore';
 import { POST_H, POST_W } from '../brand/brand';
 import type { DecorationEl } from '../types';
@@ -27,6 +28,16 @@ export const DecorationStep: React.FC = () => {
   const grafismos = decorationsOf('grafismo');
   const molduras = decorationsOf('janela');
 
+  const handleAddDecoration = (id: string) => {
+    const asset = getDecoration(id);
+    announceCanvasActivity(
+      'decoration',
+      asset?.label ? `Colando ${asset.label}... ✨` : 'Colando enfeite na folha... ✨',
+      asset?.src,
+    );
+    addDecoration(id);
+  };
+
   return (
     <div className={styles.container}>
       <div className={styles.header}>
@@ -42,7 +53,7 @@ export const DecorationStep: React.FC = () => {
           items={enfeites}
           aspectRatio="1-1"
           columns={3}
-          onSelect={(id) => addDecoration(id)}
+          onSelect={handleAddDecoration}
         />
       </div>
 
@@ -52,7 +63,7 @@ export const DecorationStep: React.FC = () => {
           items={grafismos}
           aspectRatio="1-1"
           columns={3}
-          onSelect={(id) => addDecoration(id)}
+          onSelect={handleAddDecoration}
         />
       </div>
 
@@ -63,7 +74,7 @@ export const DecorationStep: React.FC = () => {
             items={molduras}
             aspectRatio="1-1"
             columns={3}
-            onSelect={(id) => addDecoration(id)}
+            onSelect={handleAddDecoration}
           />
         </div>
       )}

@@ -1,12 +1,9 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { getCachedSlideThumb } from '../../canvas/hooks/useSlideThumb';
-import { extractSingleSlideData } from '../../lib/crossover';
-import {
-  CAROUSEL_STORAGE_KEY,
-  useCarousel,
-} from '../../store/carouselStore';
-import { useEditor } from '../../store/editorStore';
+import { convertActiveCarouselToSingle } from '../../lib/drafts/session';
+import { useCarousel } from '../../store/carouselStore';
 import { Button } from '../ui/Button';
+import { PreviewImage } from '../ui/PreviewImage';
 import styles from './SlidePickerDialog.module.css';
 
 export interface SlidePickerDialogProps {
@@ -22,38 +19,17 @@ export const SlidePickerDialog: React.FC<SlidePickerDialogProps> = ({
 }) => {
   const slides = useCarousel((s) => s.slides);
   const activeSlideIndex = useCarousel((s) => s.activeSlideIndex);
-  const format = useCarousel((s) => s.format);
-  const resetCarousel = useCarousel((s) => s.resetCarousel);
-  const setMode = useCarousel((s) => s.setMode);
 
   const [selected, setSelected] = useState<SelectionOption>(activeSlideIndex);
+
+  useEffect(() => {
+    if (isOpen) setSelected(activeSlideIndex);
+  }, [isOpen, activeSlideIndex]);
 
   if (!isOpen) return null;
 
   const handleConfirm = () => {
-    if (selected === 'scratch') {
-      resetCarousel();
-      setMode('single');
-      localStorage.removeItem(CAROUSEL_STORAGE_KEY);
-      useEditor.getState().reset();
-      useEditor.temporal.getState().clear();
-    } else {
-      const chosen = extractSingleSlideData(slides, selected, format);
-      resetCarousel();
-      setMode('single');
-      localStorage.removeItem(CAROUSEL_STORAGE_KEY);
-      if (chosen) {
-        useEditor.setState({
-          doc: chosen.doc,
-          finish: chosen.finish,
-          step: 0,
-          selectedIds: [],
-          selectedId: null,
-          editingId: null,
-        });
-        useEditor.temporal.getState().clear();
-      }
-    }
+    convertActiveCarouselToSingle(selected === 'scratch' ? null : selected);
     onClose();
   };
 
@@ -68,7 +44,8 @@ export const SlidePickerDialog: React.FC<SlidePickerDialogProps> = ({
       >
         <h3 className={styles.title}>Qual slide você quer manter? 🌽</h3>
         <p className={styles.message}>
-          Escolha um slide pra levar pro post único. O que estiver nele — inclusive as imagens — vai junto.
+          Escolha um slide pra levar pro post único. O que estiver nele — inclusive as imagens — vai
+          junto, e os outros slides saem deste rascunho. Dá para desfazer no aviso logo depois.
         </p>
 
         <div className={styles.slideList}>
@@ -83,15 +60,13 @@ export const SlidePickerDialog: React.FC<SlidePickerDialogProps> = ({
                 onClick={() => setSelected(idx)}
               >
                 <div className={styles.thumbBox}>
-                  {thumb ? (
-                    <img
-                      src={thumb}
-                      alt={`Miniatura do slide ${idx + 1}`}
-                      className={styles.thumbImg}
-                    />
-                  ) : (
-                    <span className={styles.thumbPlaceholder}>#{idx + 1}</span>
-                  )}
+                  <PreviewImage
+                    src={thumb}
+                    alt={`Miniatura do slide ${idx + 1}`}
+                    imgClassName={styles.thumbImg}
+                    eager
+                    fallback={<span className={styles.thumbPlaceholder}>#{idx + 1}</span>}
+                  />
                 </div>
                 <span className={styles.slideLabel}>Slide {idx + 1}</span>
               </button>

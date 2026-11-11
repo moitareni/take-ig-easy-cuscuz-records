@@ -1,5 +1,20 @@
 # Design Técnico — Carrossel de Posts para Instagram
 
+> **Revisão 10/11/2026 — release v3 "Meus rascunhos" + levas de correção 1, 2 e 3.**
+> O diagrama "Fluxo de Dados" abaixo mostra `App.tsx` decidindo pelo `mode` e o
+> `useCarousel` lendo/escrevendo `localStorage`. **Essa parte é histórica**: na
+> release v3 a home é sempre a primeira tela, `useCarousel` é store de sessão e a
+> persistência é feita por `lib/drafts/session.ts` em IndexedDB. A lógica de
+> slides, crossover, miniaturas e exportação ZIP descrita neste documento continua
+> válida. Ver o apêndice "Arquitetura v3" no final e `AGENTS.md`.
+>
+> **Leva 3 (10/11/2026) — o que prevalece**
+> - **Header/Dock**: logo da Cuscuz e botão "Começar do zero" removidos do Header; selo de autosave ao lado do título; `ModeDropdown` vem **antes** de `Exportar`/`Exportação`; Desfazer/Refazer ficam na base do dock direito.
+> - **Renomear sem salto**: título editável como pílula creme (sem borda/outline, auto-dimensionada, máx. 80 caracteres, texto selecionado ao focar) no Header **e** no card da home (clique no título ou no lápis "Renomear"); o card ganhou o botão direto "Exportar".
+> - **Seleção** de texto/realces em amarelo da marca (`--c-amarelo`); scrollbars finas e arredondadas em todos os navegadores (`FirefoxRoundScrollbar`).
+> - **Logo**: presets de posição seguem `layoutGuides.margin` (ou 0 com guias/margens desativadas).
+> - **Feedback de carregamento**: selo temático `canvas-busy-overlay` sobre a folha ao trocar fundo / adicionar enfeite, foto, logo ou textura (mín. 280 ms), spinner na miniatura escolhida, `preloadImage` em hover/foco, pré-decode das fotos importadas e texturas globais carregadas **só quando ligadas**. Ver `AGENTS.md` §2.14 e §2.17.
+
 ## Visão Geral
 
 O Modo Carrossel é adicionado ao Cuscuz Records Insta Kit como uma camada **orquestadora** que envolve o editor existente. O editor de 6 etapas (`useEditor` + `EditorCanvas`) não é refatorado; em vez disso, o novo `useCarousel` assume o papel de gerenciar a lista de slides e sincronizar o slide ativo com o editor. O Modo Post Único continua funcionando exatamente como antes, sem nenhuma alteração.
@@ -954,3 +969,69 @@ Tanto na geração de miniaturas (`useSlideThumb.ts`) quanto na exportação (`e
 *Para qualquer* carrossel em que um elemento atravessa a borda entre dois slides adjacentes `A` e `B`, converter o carrossel para Post Único escolhendo tanto `A` quanto `B` (inclusive o slide que não importou originalmente o elemento) deve preservar o elemento no `doc.elements` do Post Único resultante na coordenada local daquele slide (`x - postWidth` ou `x + postWidth`), com `crossover` limpo.
 
 **Valida: Requisitos 1.7, 11.9**
+
+---
+
+## Apêndice — Arquitetura v3 do carrossel (10/11/2026)
+
+### Onde fica cada coisa hoje
+
+| Responsabilidade | Antes (documento original) | Agora |
+|---|---|---|
+| Tela de entrada | `ModeSelector` / Tela Inicial | `screens/HomeScreen.tsx` ("Meus rascunhos"), sempre no boot |
+| Estado do carrossel | `useCarousel` + `persist` em `localStorage` | `useCarousel` em memória + `CarouselDraftBody` no IndexedDB |
+| Estado do editor | `useEditor` + `persist` em `cuscuz-insta-kit:rascunho` | `useEditor` em memória + `SingleDraftBody` no IndexedDB |
+| Save | `debouncedLocalStorage(300)` | `persistIfDirty()` / `flushDraft()` com `SAVE_DEBOUNCE_MS = 450` |
+| Sincronização | — | subscriber em `main.tsx`: `useEditor.doc/finish` → `useCarousel.updateActiveSlide()` |
+| Conversão de modo | descartava rascunho do carrossel | mesmo `activeDraftId`; `switchSingleToCarousel()` + confirmação / `convertActiveCarouselToSingle()` + `SlidePickerDialog` com "Desfazer" |
+| Capa | inexistente | `lib/drafts/cover.ts` → store `covers` (WebP 480 px) |
+
+### Fluxo atual
+
+```
+bootDrafts() → home ──createDraft('carousel', format)──► EditorScreen
+                                                        │
+   useCarousel (slides[], activeSlideIndex, format, mode) │
+        ▲  updateActiveSlide(doc, finish)                 │ loadSlideIntoEditor()
+        │  (subscriber em main.tsx)                      ▼
+   useEditor (doc, finish, step, selectedIds)  ◄────  EditorCanvas
+        │
+        ▼  markDraftDirty() → persistIfDirty() → saveDraftRecord()
+   IndexedDB: drafts(DraftMeta) · documents(CarouselDraftBody) · covers(Blob)
+        │
+        ▼  ensureCover() / flushSession() / BroadcastChannel / navigator.locks
+```
+
+### Componentes da tira (Leva 1)
+
+- `SlideTray`: import estático em `EditorScreen.tsx`; `flex: 0 0 auto`, `min-height: 120px`;
+  `trayReady` com liberação por `onPreviewReady` do slide ativo **ou** timeout de 1,5 s;
+  botões `disabled={!trayReady || ...}`, `aria-busy`, "Preparando as miniaturas...".
+- `SlideThumb`: `disabled`, `onPreviewReady`, `PreviewImage` com spinner temático;
+  fallback "Vazio" apenas para slides inativos/verdadeiramente vazios.
+- `useSlideThumb`: cache por `slideId` + hash do `doc`/`finish`, debounce 400 ms,
+  captura via `stage.toDataURL` com `CAROUSEL_THUMB_WIDTH = 270`.
+- `SlidePickerDialog`: usa `getCachedSlideThumb`, agora com `PreviewImage` e mantém
+  o `activeDraftId` na conversão.
+
+### Regras por slide
+
+- `finish` é `SlideData.finish`: `enableAllFinishes()` (Leva 2) altera só o slide
+  ativo e o subscriber de `main.tsx` propaga para `useCarousel`.
+- "Ativar todas" é um único `set` no `editorStore` → um único passo de undo;
+  `resetFinish()` continua como inverso (e também zera opacidades).
+- Formato: `carouselStore.format` é imutável após a criação; `BackgroundStep`
+  não renderiza o seletor no carrossel e `handleFormatChange` mantém o guard
+  como defesa em profundidade.
+- Espelhamento do fundo: `BackgroundMirrorToolbar` no dock, válido também no
+  carrossel; `backgroundFlipX/Y` continuam no `Doc` de cada slide.
+
+### Testes
+
+`e2e/momento-zero.spec.ts` (modo, formatos, selo "Slide X de Y"),
+`e2e/rascunhos.spec.ts` (carrossel em 1:1, conversão no mesmo rascunho),
+`e2e/regressoes.spec.ts` (tira no primeiro frame, formato oculto no carrossel),
+`src/store/carouselStore.test.ts`, `src/lib/exportCarousel.test.ts`,
+`src/canvas/hooks/useSlideThumb.test.ts`. Estado verificado em 10/11/2026:
+159 testes unitários e `e2e` 63 passed / 3 skipped (66 testes). Build obrigatório
+antes do e2e.
