@@ -1,12 +1,12 @@
 import { expect, test } from '@playwright/test';
-import { goHome, openCarousel, openSingle, waitForHome } from './helpers';
+import { createSingle, goHome, openCarousel, openSingle, waitForHome } from './helpers';
 
 test.describe('Regressões da leva P0', () => {
   test('recarregar após criar e converter para carrossel não quebra a home', async ({ page }) => {
     await page.goto('/');
     await waitForHome(page);
 
-    await page.getByRole('button', { name: 'Criar post único', exact: true }).click();
+    await createSingle(page);
     await expect(page.getByRole('heading', { name: /1\. Escolha o fundo/ })).toBeVisible();
     await page.locator('button[title*="Pronto 1"]').first().click();
 
@@ -15,7 +15,7 @@ test.describe('Regressões da leva P0', () => {
     await page
       .getByRole('dialog')
       .filter({ hasText: 'Trocar pra Carrossel?' })
-      .getByRole('button', { name: 'Bora, trocar!' })
+      .getByRole('button', { name: 'Trocar!' })
       .click();
     await expect(page.getByRole('navigation', { name: 'Tira de slides do carrossel' })).toBeVisible();
 
@@ -100,13 +100,12 @@ test.describe('Regressões da leva P0', () => {
     await page.getByRole('heading', { name: /Cuscuz Records Insta Kit/ }).click();
     await expect(tipText).toBeHidden();
 
-    // Com rascunho salvo, os botões do header aparecem; ao excluir o último, somem de novo
-    await page.getByRole('button', { name: 'Criar post único', exact: true }).click();
+    // Com rascunho salvo, o gatilho do header aparece; ao excluir o último, volta para o quadro
+    await createSingle(page);
     await page.locator('button[title*="Pronto 1"]').first().click();
     await goHome(page);
 
-    await expect(page.getByRole('button', { name: 'Post único', exact: true })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Carrossel', exact: true })).toBeVisible();
+    await expect(page.getByTestId('create-draft-trigger')).toBeVisible();
 
     await page.locator('article').getByRole('button', { name: 'Excluir rascunho' }).click();
     await page
@@ -115,8 +114,8 @@ test.describe('Regressões da leva P0', () => {
       .getByRole('button', { name: 'Sim, excluir' })
       .click();
 
-    await expect(page.getByRole('button', { name: 'Post único', exact: true })).toHaveCount(0);
-    await expect(page.getByRole('button', { name: 'Criar post único', exact: true })).toBeVisible();
+    await expect(page.getByText('Nenhum rascunho por aqui ainda')).toBeVisible();
+    await expect(page.getByTestId('create-draft-trigger')).toBeVisible();
   });
 
   test('Leva 2 (#3 e #8): espelhamento do fundo no dock com undo e scrollbar temática', async ({ page }) => {
@@ -189,7 +188,7 @@ test.describe('Regressões da leva P0', () => {
     await page.getByRole('button', { name: /6\. Textura/ }).click();
 
     const paperCb = page.getByRole('checkbox', { name: 'Papel amassado' });
-    const borderCb = page.getByRole('checkbox', { name: 'Textura de borda' });
+    const borderCb = page.getByRole('checkbox', { name: 'Craquelado' });
     const grainCb = page.getByRole('checkbox', { name: 'Granulado' });
 
     // Sem botões Ligado/Desligado nem texto explicativo; prévias fechadas
@@ -238,9 +237,13 @@ test.describe('Regressões da leva P0', () => {
     await expect(borderCb).toBeChecked();
     await expect(grainCb).toBeChecked();
 
-    // Restaurar padrão desliga novamente
-    await page.getByRole('button', { name: /Restaurar padrão/ }).click();
+    // "Restaurar padrão" saiu da aba: "Desativar todas" é o caminho único para
+    // desligar os três de uma vez e continua funcionando depois de um undo.
+    await expect(page.getByRole('button', { name: /Restaurar padrão/ })).toHaveCount(0);
+    await page.getByRole('button', { name: 'Desativar todas' }).click();
     await expect(paperCb).not.toBeChecked();
+    await expect(borderCb).not.toBeChecked();
+    await expect(grainCb).not.toBeChecked();
   });
   test('Presets de logo seguem margem das guias (ou 0 quando desativada) e novo layout de Header/Dock', async ({
     page,
@@ -302,7 +305,7 @@ test.describe('Regressões da leva P0', () => {
     await page
       .getByRole('dialog')
       .filter({ hasText: 'Trocar pra Carrossel?' })
-      .getByRole('button', { name: 'Bora, trocar!' })
+      .getByRole('button', { name: 'Trocar!' })
       .click();
 
     const exportTrigger = page.getByTestId('export-dropdown-trigger');
@@ -323,7 +326,7 @@ test.describe('Regressões da leva P0', () => {
     });
     await page.goto('/');
     await waitForHome(page);
-    await page.getByRole('button', { name: 'Criar post único', exact: true }).click();
+    await createSingle(page);
     await expect(page.getByRole('heading', { name: /1\. Escolha o fundo/ })).toBeVisible();
 
     const overlay = page.getByTestId('canvas-busy-overlay');
@@ -345,7 +348,7 @@ test.describe('Regressões da leva P0', () => {
   test('Feedback de carregamento: enfeite com asset rápido não pisca o selo', async ({ page }) => {
     await page.goto('/');
     await waitForHome(page);
-    await page.getByRole('button', { name: 'Criar post único', exact: true }).click();
+    await createSingle(page);
     await expect(page.getByRole('heading', { name: /1\. Escolha o fundo/ })).toBeVisible();
     await page.locator('button[title*="Pronto 1"]').first().click();
     await page.getByRole('button', { name: /Próximo/ }).click();
@@ -357,4 +360,90 @@ test.describe('Regressões da leva P0', () => {
     await item.click();
     await page.waitForTimeout(600);
     await expect(page.getByTestId('canvas-busy-overlay')).toHaveCount(0);
-  });});
+  });
+
+  test('Leva 4: log "Na folha" seleciona pela caixa toda, lixeira só exclui e ponto substitui a numeração', async ({
+    page,
+  }) => {
+    await openSingle(page);
+    await page.locator('button[title*="Pronto 1"]').first().click();
+    await page.getByRole('button', { name: /Próximo/ }).click();
+    await expect(page.getByRole('heading', { name: /2\./ })).toBeVisible();
+
+    await page.locator('button[title*="Arabesco floral"]').first().click();
+    await page.locator('button[title*="Folhagem rendada"]').first().click();
+    await expect(page.getByRole('heading', { name: /Opções de Folhagem rendada/ })).toBeVisible();
+
+    const row = page.getByRole('button', { name: 'Selecionar Arabesco floral' });
+    // Ponto de lista no lugar de "1. ...": rótulo limpo + marcador decorativo.
+    await expect(row).toHaveText('Arabesco floral');
+    await expect(row.locator('[aria-hidden="true"]')).toHaveCount(1);
+
+    // Clique no canto direito da caixa (longe do nome) também seleciona.
+    // O locator.click rola a linha para dentro do painel antes de clicar.
+    const box = await row.boundingBox();
+    expect(box).not.toBeNull();
+    await row.click({ position: { x: box!.width - 56, y: box!.height / 2 } });
+    await expect(page.getByRole('heading', { name: /Opções de Arabesco floral/ })).toBeVisible();
+
+    // A lixeira exclui só a sua linha, sem alterar a seleção do outro enfeite.
+    const otherRow = page.getByRole('button', { name: 'Selecionar Folhagem rendada' }).locator('..');
+    await otherRow.getByRole('button', { name: 'Remover' }).click();
+    await expect(page.getByRole('button', { name: 'Selecionar Folhagem rendada' })).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: /Opções de Arabesco floral/ })).toBeVisible();
+  });
+
+  test('Leva 4: os três botões de criação de texto ficam lado a lado', async ({ page }) => {
+    await openSingle(page);
+    await page.locator('button[title*="Pronto 1"]').first().click();
+    await page.getByRole('button', { name: /Próximo/ }).click();
+    await expect(page.getByRole('heading', { name: /2\./ })).toBeVisible();
+    await page.locator('footer button:has-text("Pular (sem enfeites)")').click();
+    await expect(page.getByRole('heading', { name: /3\./ })).toBeVisible();
+    await page.locator('footer button:has-text("Pular (sem imagem)")').click();
+    await expect(page.getByRole('heading', { name: /4\./ })).toBeVisible();
+
+    const title = page.getByRole('button', { name: '+ Título', exact: true });
+    const body = page.getByRole('button', { name: '+ Texto', exact: true });
+    const highlight = page.getByRole('button', { name: '+ Texto com borda', exact: true });
+    await expect(title).toBeVisible();
+    await expect(body).toBeVisible();
+    await expect(highlight).toBeVisible();
+
+    const a = await title.boundingBox();
+    const b = await body.boundingBox();
+    const c = await highlight.boundingBox();
+    expect(a && b && c).toBeTruthy();
+    expect(Math.abs(b!.y - a!.y)).toBeLessThan(2);
+    expect(Math.abs(c!.y - a!.y)).toBeLessThan(2);
+    expect(b!.x).toBeGreaterThan(a!.x);
+    expect(c!.x).toBeGreaterThan(b!.x);
+  });
+
+  test('Leva 4: "Cor do texto" e caixinhas de destaque com a mesma altura das cores', async ({ page }) => {
+    await openSingle(page);
+    await page.locator('button[title*="Pronto 1"]').first().click();
+    await page.getByRole('button', { name: /Próximo/ }).click();
+    await expect(page.getByRole('heading', { name: /2\./ })).toBeVisible();
+    await page.locator('footer button:has-text("Pular (sem enfeites)")').click();
+    await expect(page.getByRole('heading', { name: /3\./ })).toBeVisible();
+    await page.locator('footer button:has-text("Pular (sem imagem)")').click();
+    await expect(page.getByRole('heading', { name: /4\./ })).toBeVisible();
+    await page.getByRole('button', { name: '+ Título', exact: true }).click();
+
+    await expect(page.getByText('Cor do texto:')).toBeVisible();
+    await expect(page.getByText('Cor da Marca:')).toHaveCount(0);
+
+    const colorBlock = page.getByText('Cor do texto:').locator('..');
+    const borderBlock = page.getByText('Caixa de destaque').locator('..');
+    const colorBox = await colorBlock.boundingBox();
+    const borderBox = await borderBlock.boundingBox();
+    expect(colorBox && borderBox).toBeTruthy();
+    expect(Math.abs(colorBox!.height - borderBox!.height)).toBeLessThan(2);
+
+    const swatchBox = await colorBlock.getByRole('button').first().boundingBox();
+    const segmentBox = await borderBlock.getByRole('button', { name: 'Nenhuma' }).boundingBox();
+    expect(swatchBox && segmentBox).toBeTruthy();
+    expect(Math.abs(swatchBox!.height - segmentBox!.height)).toBeLessThan(3);
+  });
+});

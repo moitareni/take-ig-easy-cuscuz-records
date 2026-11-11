@@ -13,7 +13,7 @@ const COLOR_KEYS = Object.keys(COLORS) as BrandColor[];
 export const ColorSwatches: React.FC<ColorSwatchesProps> = ({ value, onChange }) => {
   return (
     <div className={styles.container}>
-      <span className={styles.label}>Cor da Marca:</span>
+      <span className={styles.label}>Cor do texto:</span>
       <div className={styles.swatches}>
         {COLOR_KEYS.map((k) => {
           const hex = COLORS[k];

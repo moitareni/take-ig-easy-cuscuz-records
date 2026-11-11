@@ -1,5 +1,16 @@
 # Plano de Implementação: Cuscuz Records Insta Kit
 
+> **Leva 4 (11/11/2026) — o que prevalece**
+> Tasks executadas nesta leva, uma por vez, com `typecheck` após cada uma e a suíte
+> completa no fim (`typecheck` → `test` → `build` → `e2e`):
+> - [x] 4.1 Remover "Restaurar padrão" da aba Textura (botão + `resetFinish()` no store) e adaptar `e2e/regressoes.spec.ts` sem afrouxar a cobertura.
+> - [x] 4.2 Criar `components/ui/ElementListRow.tsx` + CSS e aplicar nas 3 listas "Na folha" (Enfeites, Imagens, Textos): caixa toda clicável, lixeira separada, ponto de lista no lugar da numeração (só onde havia número).
+> - [x] 4.3 Esconder o lápis `Renomear` do card da home durante a edição inline; só reaparece na confirmação/cancelamento.
+> - [x] 4.4 Os três botões de criação de texto do Passo 4 lado a lado.
+> - [x] 4.5 "Cor da Marca" → **"Cor do texto"** e altura das opções de "Caixa de destaque" igual à dos swatches.
+> - [x] 4.6 Verificação: 161 unitários, build OK, e2e 79 passed / 3 skipped (82 testes desktop + mobile); 3 novos testes de regressão em `e2e/regressoes.spec.ts`.
+> - [ ] **Pendência (fora desta leva)**: "incrementar a tela antes de haver rascunhos" — descartado a pedido do Reni, será detalhado depois. Nenhuma alteração de boot/home foi feita por conta dele.
+>
 > **Revisão 10/11/2026.** As tasks abaixo (Fase 1) estão concluídas e descrevem a
 > implementação de base. A release v3 "Meus rascunhos" e as três levas de correção
 > da `tmp/relacao_de_problema.md` foram implementadas **depois** e estão registradas
@@ -13,6 +24,8 @@
 > - **Logo**: presets de posição seguem `layoutGuides.margin` (ou 0 com guias/margens desativadas).
 > - **Feedback de carregamento**: selo temático `canvas-busy-overlay` sobre a folha ao trocar fundo / adicionar enfeite, foto, logo ou textura **apenas se a espera passar de ~200 ms** (some assim que o item fica pronto; sem tempo mínimo), spinner na miniatura escolhida, `preloadImage` em hover/foco, pré-decode das fotos importadas e texturas globais carregadas **só quando ligadas**. Ver `AGENTS.md` §2.14 e §2.17.
 > - **Textura (Leva 3)**: cada acabamento vira um cartão compacto sem texto explicativo, com checkbox do tema (``Checkbox``) no canto superior direito e liga/desliga ao clicar no cartão todo; os botões "Ligado/Desligado" saíram; "Ver prévia da textura" virou o botão "Prévia da textura", visível só no hover do cartão; "Ativar todas" vira "Desativar todas" (``disableAllFinishes()``, um único passo de undo). Ver ``AGENTS.md`` §2.8.
+> - **Criação unificada na home**: os pares de botões de criação (header e quadro vazio) viraram **um único `+ Criar novo`** (`components/CreateDraftDropdown.tsx`, `create-draft-trigger`), com as mesmas opções/ícones do `ModeDropdown`. Isso substitui a task 3.8 (`showHeaderCreate` + `CREATE_SINGLE`/`CREATE_CAROUSEL`): o helper agora expõe `openCreateMenu`/`createSingle`/`pickCarousel`/`createCarousel`.
+> - **Passo 4 · Editar Texto**: "+ Destaque (com efeito)" virou **"+ Texto com borda"**; "Borda de Destaque" virou **"Caixa de destaque"**; o botão "Efeito da Marca" foi removido do painel; "Cor da Marca" (2 colunas) e "Caixa de destaque" (opções empilhadas via `Segmented direction="column"`) ficam lado a lado, com mais respiro vertical (`.editStack`).
 
 ## Visão Geral
 
@@ -282,9 +295,9 @@ O **Cuscuz Records Insta Kit** está completamente implementado. Este documento 
     - Renderizados via `TextureOverlays.tsx` na camada de sobreposição final
     - _Requisitos: 7.1, 7.2, 7.8_
 
-  - [x] 7.2 Papel amassado e textura de borda com sliders de opacidade
+  - [x] 7.2 Papel amassado e craquelado com sliders de opacidade
     - Papel amassado: `papel-textura.webp`, opacidade 0–100%, padrão 40%
-    - Textura de borda: `textura-borda.webp`, opacidade 0–100%, padrão 40%
+    - craquelado: `textura-borda.webp`, opacidade 0–100%, padrão 40%
     - _Requisitos: 7.3, 7.4_
 
   - [x] 7.3 Granulado determinístico com `mulberry32` em `grain.ts`

@@ -24,12 +24,43 @@ const FORMAT_LABELS: Record<CarouselFormat, string> = {
   '1:1': 'Quadrado (1:1)',
 };
 
-export const CREATE_SINGLE = /^(Post único|Criar post único)$/;
-export const CREATE_CAROUSEL = /^(Carrossel|Criar carrossel)$/;
+export const CREATE_MENU = 'Criar novo rascunho';
+/** O nome acessível do item inclui a dica ("Post único Uma arte só"). */
+export const CREATE_SINGLE = /Post único/;
+export const CREATE_CAROUSEL = /Carrossel/;
 
 /** Espera a home "Meus rascunhos" terminar o boot (migração + IndexedDB). */
 export async function waitForHome(page: Page): Promise<void> {
-  await expect(page.getByRole('button', { name: CREATE_SINGLE }).first()).toBeVisible();
+  await expect(page.getByTestId('create-draft-trigger').first()).toBeVisible();
+}
+
+/** Abre o menu "+ Criar novo" da home (header ou quadro vazio). */
+export async function openCreateMenu(page: Page): Promise<void> {
+  await page.getByTestId('create-draft-trigger').first().click();
+  await expect(page.getByRole('menu', { name: CREATE_MENU })).toBeVisible();
+}
+
+/** Cria um post único direto pela home. */
+export async function createSingle(page: Page): Promise<void> {
+  await openCreateMenu(page);
+  await page.getByRole('menuitem', { name: CREATE_SINGLE }).click();
+}
+
+/** Escolhe Carrossel no menu e deixa o diálogo de formato aberto para inspeção. */
+export async function pickCarousel(page: Page): Promise<void> {
+  await openCreateMenu(page);
+  await page.getByRole('menuitem', { name: CREATE_CAROUSEL }).click();
+  await expect(
+    page.getByRole('dialog', { name: /Escolha o formato do carrossel/ }),
+  ).toBeVisible();
+}
+
+/** Escolhe Carrossel no menu e confirma o formato no diálogo. */
+export async function createCarousel(page: Page, format: CarouselFormat = '3:4'): Promise<void> {
+  await pickCarousel(page);
+  const dialog = page.getByRole('dialog', { name: /Escolha o formato do carrossel/ });
+  await dialog.getByRole('button', { name: FORMAT_LABELS[format], exact: true }).click();
+  await dialog.getByRole('button', { name: 'Bora criar carrossel!' }).click();
 }
 
 /**
@@ -45,12 +76,9 @@ export async function startEditor(
   await waitForHome(page);
 
   if (mode === 'single') {
-    await page.getByRole('button', { name: CREATE_SINGLE }).first().click();
+    await createSingle(page);
   } else {
-    await page.getByRole('button', { name: CREATE_CAROUSEL }).first().click();
-    const dialog = page.getByRole('dialog', { name: /Escolha o formato do carrossel/ });
-    await dialog.getByRole('button', { name: FORMAT_LABELS[format], exact: true }).click();
-    await dialog.getByRole('button', { name: 'Bora criar carrossel!' }).click();
+    await createCarousel(page, format);
   }
 
   await expect(page.getByRole('heading', { name: /1\. Escolha o fundo/ })).toBeVisible();

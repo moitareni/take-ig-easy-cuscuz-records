@@ -66,7 +66,7 @@ test.describe('Cuscuz Records Insta Kit - Fluxo Completo', () => {
     await textarea.fill('LANÇAMENTO');
 
     // Adiciona um texto normal (PT Sans Narrow)
-    await page.locator('button:has-text("+ Texto")').click();
+    await page.getByRole('button', { name: '+ Texto', exact: true }).click();
 
     // Verifica que a regra do texto não exceder o título está ativa
     // O slider do texto deve ter o marcador de limite
@@ -91,7 +91,7 @@ test.describe('Cuscuz Records Insta Kit - Fluxo Completo', () => {
     await page.locator('footer button:has-text("Próximo")').click();
     await expect(page.locator('h2')).toContainText('6. Textura');
     const paperCb = page.getByRole('checkbox', { name: 'Papel amassado' });
-    const borderCb = page.getByRole('checkbox', { name: 'Textura de borda' });
+    const borderCb = page.getByRole('checkbox', { name: 'Craquelado' });
     const grainCb = page.getByRole('checkbox', { name: 'Granulado' });
     await expect(paperCb).not.toBeChecked();
     await expect(borderCb).not.toBeChecked();

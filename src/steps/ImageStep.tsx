@@ -1,16 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  BringToFront,
   Eraser,
-  FlipHorizontal,
-  FlipVertical,
   ImagePlus,
   Package,
   RefreshCw,
   RotateCcw,
-  Scissors,
-  SendToBack,
-  Trash2,
   UserRound,
   X,
 } from 'lucide-react';
@@ -35,6 +29,8 @@ import { useEditor, useSelected } from '../store/editorStore';
 import type { ImageEl, ImageMeta } from '../types';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
+import { ElementListRow } from '../components/ui/ElementListRow';
+import { HelpTip } from '../components/ui/HelpTip';
 import { IconButton } from '../components/ui/IconButton';
 import { PreviewImage } from '../components/ui/PreviewImage';
 import styles from './StepPanel.module.css';
@@ -72,13 +68,13 @@ const BG_MODES: { mode: BgRemovalMode; icon: React.ReactNode; label: string; hin
     mode: 'person',
     icon: <UserRound size={22} strokeWidth={2.5} />,
     label: 'Pessoa',
-    hint: 'Pra retratos e figuras — cabelo e detalhes suaves preservados',
+    hint: 'Pra retratos e figuras, com cabelo e detalhes suaves preservados',
   },
   {
     mode: 'object',
     icon: <Package size={22} strokeWidth={2.5} />,
     label: 'Objeto',
-    hint: 'Pra produtos, capas e elementos — bordas limpas e firmes',
+    hint: 'Pra produtos, capas e elementos, com bordas limpas e firmes',
   },
 ];
 
@@ -130,7 +126,7 @@ const RemoveBgPanel: React.FC<RemoveBgPanelProps> = ({ el, lastMode, onClose, on
     <div ref={panelRef} className={localStyles.panel} role="group" aria-label="Remover fundo">
       <div className={localStyles.panelHeader}>
         <strong className={localStyles.panelTitle}>
-          {step === 'choose' && 'Remover fundo'}
+          {step === 'choose' && 'O que há na imagem para recortar?'}
           {step === 'download' && 'Só um instante…'}
           {step === 'processing' && 'Recortando…'}
           {step === 'error' && 'Ops!'}
@@ -147,32 +143,49 @@ const RemoveBgPanel: React.FC<RemoveBgPanelProps> = ({ el, lastMode, onClose, on
 
       {step === 'choose' && (
         <>
-          <p className={localStyles.panelSub}>Escolha o tipo de recorte pra “{el.name}”:</p>
           <div className={localStyles.modeGrid}>
-            {BG_MODES.map((m) => (
-              <button
+            {BG_MODES.map((m, index) => (
+              // O (i) fica FORA do botão: o nome acessível do modo continua limpo.
+              <div
                 key={m.mode}
-                type="button"
                 className={`${localStyles.modeCard} ${lastMode === m.mode ? localStyles.modeCardLast : ''}`}
-                onClick={() => onChoose(m.mode)}
               >
-                <span className={localStyles.modeIcon} aria-hidden="true">
-                  {m.icon}
-                </span>
-                <span className={localStyles.modeText}>
-                  <span className={localStyles.modeLabel}>
-                    {m.label}
-                    {lastMode === m.mode && <span className={localStyles.lastUsedTag}>última usada</span>}
+                <button
+                  type="button"
+                  className={localStyles.modeHit}
+                  onClick={() => onChoose(m.mode)}
+                >
+                  <span className={localStyles.modeIcon} aria-hidden="true">
+                    {m.icon}
                   </span>
-                  <span className={localStyles.modeHint}>{m.hint}</span>
+                  <span className={localStyles.modeText}>
+                    <span className={localStyles.modeLabel}>
+                      {m.label}
+                      {lastMode === m.mode && <span className={localStyles.lastUsedTag}>última usada</span>}
+                    </span>
+                  </span>
+                </button>
+                <span className={localStyles.modeInfo}>
+                  <HelpTip
+                    tip={m.hint}
+                    label={`Como funciona o modo ${m.label}`}
+                    // O balão abre pra dentro do painel: no último cartão ele
+                    // encosta na direita; nos outros, fica centrado no (?).
+                    // (Balão sempre montado: posição errada geraria rolagem
+                    // horizontal mesmo com o balão escondido.)
+                    align={index === BG_MODES.length - 1 ? 'end' : 'center'}
+                  />
                 </span>
-              </button>
+              </div>
             ))}
           </div>
           {model.phase === 'idle' && (
             <p className={localStyles.note}>
-              Primeira vez: baixamos a ferramenta de recorte ({bgModelSizeHint()}) uma vez só e guardamos no
-              navegador. Depois funciona até offline 🌽
+              <span className={localStyles.noteWarn} aria-hidden="true">
+                !
+              </span>
+              Primeira vez: baixamos a ferramenta de recorte ({bgModelSizeHint()}) uma vez só e guardamos
+              no navegador. Depois funciona até offline
             </p>
           )}
         </>
@@ -256,19 +269,18 @@ const ImageRow: React.FC<{
   selected: boolean;
   onSelect: () => void;
   onRemove: () => void;
-  onRemoveBg: () => void;
-  removeBgDisabled: boolean;
-  removeBgBusy: boolean;
-}> = ({ el, selected, onSelect, onRemove, onRemoveBg, removeBgDisabled, removeBgBusy }) => {
+}> = ({ el, selected, onSelect, onRemove }) => {
   const entry = useUserImage(el.imageId);
   return (
-    <div className={`${localStyles.row} ${selected ? localStyles.rowSelected : ''}`}>
-      <button
-        type="button"
-        className={localStyles.rowButton}
-        onClick={onSelect}
-        title={el.name}
-      >
+    <ElementListRow
+      label={entry ? el.name : `${el.name} (indisponível)`}
+      selectLabel={`Selecionar ${el.name}`}
+      removeLabel="Remover imagem"
+      title={el.name}
+      selected={selected}
+      onSelect={onSelect}
+      onRemove={onRemove}
+      leading={
         <PreviewImage
           src={entry?.thumbUrl}
           alt=""
@@ -277,32 +289,8 @@ const ImageRow: React.FC<{
           fallback={<span className={localStyles.rowThumbEmpty}>—</span>}
           eager
         />
-        <span className={localStyles.rowLabel}>
-          {entry ? el.name : `${el.name} (indisponível)`}
-        </span>
-      </button>
-      <IconButton
-        icon={
-          removeBgBusy ? (
-            <span className={localStyles.buttonSpinner} aria-hidden="true" />
-          ) : (
-            <Scissors size={14} strokeWidth={2.5} />
-          )
-        }
-        label={`Remover fundo de ${el.name}`}
-        size="sm"
-        variant="ghost"
-        disabled={removeBgDisabled}
-        onClick={onRemoveBg}
-      />
-      <IconButton
-        icon={<Trash2 size={14} strokeWidth={2.5} />}
-        label="Remover imagem"
-        size="sm"
-        variant="ghost"
-        onClick={onRemove}
-      />
-    </div>
+      }
+    />
   );
 };
 
@@ -326,11 +314,8 @@ export const ImageStep: React.FC = () => {
   const bgModel = useBgModelStatus();
   const bgProc = useBgProcessing();
 
-  const updateElement = useEditor((s) => s.updateElement);
   const removeElement = useEditor((s) => s.removeElement);
   const select = useEditor((s) => s.select);
-  const bringForward = useEditor((s) => s.bringForward);
-  const sendBackward = useEditor((s) => s.sendBackward);
   const showToast = useEditor((s) => s.showToast);
   const elements = useEditor((s) => s.doc.elements);
 
@@ -601,110 +586,66 @@ export const ImageStep: React.FC = () => {
         />
       </div>
 
-      {/* Card da imagem selecionada: transformações + troca + recorte + camadas */}
+      {/* Card da imagem selecionada: só troca e recorte. Espelhar, camadas e
+          excluir vivem no dock direito (AlignToolbar) — nada de caminho duplicado. */}
       {selectedImage && (
         <Card title="Imagem Selecionada" subtitle={selectedImage.name}>
-          <div className={styles.row}>
-            <Button
-              variant="secondary"
-              size="sm"
-              icon={<RefreshCw size={16} strokeWidth={2.5} />}
-              disabled={busyFiles > 0}
-              onClick={() => replaceButtonRef.current?.click()}
-            >
-              Trocar imagem
-            </Button>
-            <IconButton
-              icon={<Trash2 size={16} strokeWidth={2.5} />}
-              label="Remover imagem selecionada"
-              variant="danger"
-              size="sm"
-              onClick={() => removeElement(selectedImage.id)}
-            />
-          </div>
           {/* O botão vira o quadro de recorte: mesma posição, zero drama. */}
-          <div className={styles.row} style={{ marginTop: '8px' }}>
-            {selectedImage.cutFrom && !panelInCard ? (
+          {panelInCard ? (
+            <RemoveBgPanel
+              el={selectedImage}
+              lastMode={lastBgMode}
+              onClose={() => setBgPanelImageId(null)}
+              onChoose={chooseBgMode}
+              onRetry={retryBgRemoval}
+              onCancel={cancelBgRemoval}
+            />
+          ) : (
+            <div className={styles.row}>
               <Button
                 variant="secondary"
                 size="sm"
-                fullWidth
-                icon={<RotateCcw size={16} strokeWidth={2.5} />}
-                disabled={!!bgProc}
-                title="Volta pra foto com fundo original"
-                onClick={() => revertBgRemoval(selectedImage)}
+                icon={<RefreshCw size={16} strokeWidth={2.5} />}
+                disabled={busyFiles > 0}
+                onClick={() => replaceButtonRef.current?.click()}
               >
-                Reverter fundo
+                Trocar imagem
               </Button>
-            ) : panelInCard ? (
-              <RemoveBgPanel
-                el={selectedImage}
-                lastMode={lastBgMode}
-                onClose={() => setBgPanelImageId(null)}
-                onChoose={chooseBgMode}
-                onRetry={retryBgRemoval}
-                onCancel={cancelBgRemoval}
-              />
-            ) : (
-              <Button
-                variant="secondary"
-                size="sm"
-                fullWidth
-                icon={
-                  bgProc?.imageElId === selectedImage.id ? (
-                    <span className={localStyles.buttonSpinner} aria-hidden="true" />
-                  ) : (
-                    <Eraser size={16} strokeWidth={2.5} />
-                  )
-                }
-                disabled={!!bgProc}
-                title={
-                  bgProc && bgProc.imageElId !== selectedImage.id
-                    ? 'Acabando o primeiro recorte 😉'
-                    : 'Recorta o fundo desta imagem'
-                }
-                onClick={() => openBgPanel(selectedImage.id)}
-              >
-                Remover fundo
-              </Button>
-            )}
-          </div>
-          <div className={styles.row} style={{ marginTop: '8px' }}>
-            <Button
-              variant="secondary"
-              size="sm"
-              icon={<FlipHorizontal size={16} strokeWidth={2.5} />}
-              onClick={() => updateElement(selectedImage.id, { flipX: !selectedImage.flipX })}
-            >
-              Espelhar ↔
-            </Button>
-            <Button
-              variant="secondary"
-              size="sm"
-              icon={<FlipVertical size={16} strokeWidth={2.5} />}
-              onClick={() => updateElement(selectedImage.id, { flipY: !selectedImage.flipY })}
-            >
-              Espelhar ↕
-            </Button>
-          </div>
-          <div className={styles.row} style={{ marginTop: '8px' }}>
-            <Button
-              variant="secondary"
-              size="sm"
-              icon={<BringToFront size={16} strokeWidth={2.5} />}
-              onClick={() => bringForward(selectedImage.id)}
-            >
-              Trazer pra frente
-            </Button>
-            <Button
-              variant="secondary"
-              size="sm"
-              icon={<SendToBack size={16} strokeWidth={2.5} />}
-              onClick={() => sendBackward(selectedImage.id)}
-            >
-              Enviar pra trás
-            </Button>
-          </div>
+              {selectedImage.cutFrom ? (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  icon={<RotateCcw size={16} strokeWidth={2.5} />}
+                  disabled={!!bgProc}
+                  title="Volta pra foto com fundo original"
+                  onClick={() => revertBgRemoval(selectedImage)}
+                >
+                  Reverter fundo
+                </Button>
+              ) : (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  icon={
+                    bgProc?.imageElId === selectedImage.id ? (
+                      <span className={localStyles.buttonSpinner} aria-hidden="true" />
+                    ) : (
+                      <Eraser size={16} strokeWidth={2.5} />
+                    )
+                  }
+                  disabled={!!bgProc}
+                  title={
+                    bgProc && bgProc.imageElId !== selectedImage.id
+                      ? 'Acabando o primeiro recorte 😉'
+                      : 'Recorta o fundo desta imagem'
+                  }
+                  onClick={() => openBgPanel(selectedImage.id)}
+                >
+                  Remover fundo
+                </Button>
+              )}
+            </div>
+          )}
         </Card>
       )}
 
@@ -714,7 +655,7 @@ export const ImageStep: React.FC = () => {
           <h3 className={styles.sectionTitle}>
             Na folha ({currentImages.length}/{IMAGE_MAX_COUNT})
           </h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+          <div className={styles.elementList}>
             {currentImages.map((img) => (
               <ImageRow
                 key={img.id}
@@ -722,9 +663,6 @@ export const ImageStep: React.FC = () => {
                 selected={selectedImage?.id === img.id}
                 onSelect={() => select(img.id)}
                 onRemove={() => removeElement(img.id)}
-                onRemoveBg={() => openBgPanel(img.id)}
-                removeBgDisabled={!!bgProc}
-                removeBgBusy={bgProc?.imageElId === img.id}
               />
             ))}
           </div>

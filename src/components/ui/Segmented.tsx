@@ -12,6 +12,9 @@ export interface SegmentedProps<T extends string> {
   value: T;
   onChange: (value: T) => void;
   size?: 'sm' | 'md';
+  /** `row` (padrão) ou `column` para grupos estreitos, como "Caixa de destaque". */
+  direction?: 'row' | 'column';
+  className?: string;
 }
 
 export function Segmented<T extends string>({
@@ -19,9 +22,11 @@ export function Segmented<T extends string>({
   value,
   onChange,
   size = 'md',
+  direction = 'row',
+  className = '',
 }: SegmentedProps<T>) {
   return (
-    <div className={`${styles.container} ${styles[size]}`}>
+    <div className={`${styles.container} ${styles[size]} ${styles[direction]} ${className}`}>
       {options.map((opt) => {
         const isSelected = opt.value === value;
         return (

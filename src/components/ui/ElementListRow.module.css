@@ -1,0 +1,82 @@
+.row {
+  position: relative;
+  border: 2px solid var(--c-border);
+  border-radius: var(--radius-sm);
+  background-color: var(--c-surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.selected {
+  background-color: var(--c-amarelo);
+}
+
+/* Cobre a caixa inteira; o padding-right reserva o espaço da lixeira. */
+.hit {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 52px;
+  padding: 8px 44px 8px 12px;
+  border: none;
+  border-radius: inherit;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.hit:hover {
+  background-color: var(--c-creme);
+}
+
+.selected .hit:hover {
+  background-color: var(--c-amarelo-quente);
+}
+
+.hit:focus-visible {
+  outline: 3px solid var(--c-verde);
+  outline-offset: 2px;
+}
+
+/* Ponto de lista personalizado: substitui a numeração "1. ...". */
+.bullet {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--c-preto);
+  border-radius: 50%;
+  background-color: var(--c-amarelo-quente);
+  box-shadow: 0 1px 0 var(--c-preto);
+}
+
+.selected .bullet {
+  background-color: var(--c-barro);
+}
+
+.leading {
+  flex: none;
+  display: flex;
+  align-items: center;
+}
+
+.label {
+  min-width: 0;
+  font-family: var(--font-headline);
+  font-size: 15px;
+  color: var(--c-text-main);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Irmã do botão: clicar na lixeira não propaga seleção. */
+.remove {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+}

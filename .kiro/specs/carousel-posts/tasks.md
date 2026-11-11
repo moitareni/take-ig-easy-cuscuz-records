@@ -1,5 +1,13 @@
 # Plano de Implementação — Carrossel de Posts para Instagram
 
+> **Leva 4 (11/11/2026) — o que prevalece**
+> Nenhuma task nova de carrossel: as correções desta leva atingem o **editor de 6
+> etapas compartilhado** e, por isso, valem para todos os slides. Registradas em
+> `.kiro/specs/cuscuz-insta-kit/tasks.md` (Leva 4) e no `AGENTS.md`.
+> - Textura sem "Restaurar padrão"; log "Na folha" clicável com ponto de lista; lápis de renomear oculto na edição; Passo 4 com botões lado a lado, "Cor do texto" e altura simétrica.
+> - Verificação: 161 unitários, build OK, e2e 79 passed / 3 skipped (82 testes desktop + mobile).
+> - **Pendência**: "incrementar a tela antes de haver rascunhos" descartado nesta leva, sem alteração de boot/home.
+>
 > **Revisão 10/11/2026.** As tasks abaixo concluem a **primeira** implementação do
 > carrossel (`ModeSelector` + `localStorage`). A release v3 "Meus rascunhos"
 > substituiu essa arquitetura e as três levas de correção ajustaram a UX; ambas
@@ -13,6 +21,7 @@
 > - **Logo**: presets de posição seguem `layoutGuides.margin` (ou 0 com guias/margens desativadas).
 > - **Feedback de carregamento**: selo temático `canvas-busy-overlay` sobre a folha ao trocar fundo / adicionar enfeite, foto, logo ou textura **apenas se a espera passar de ~200 ms** (some assim que o item fica pronto; sem tempo mínimo), spinner na miniatura escolhida, `preloadImage` em hover/foco, pré-decode das fotos importadas e texturas globais carregadas **só quando ligadas**. Ver `AGENTS.md` §2.14 e §2.17.
 > - **Textura (Leva 3)**: cada acabamento vira um cartão compacto sem texto explicativo, com checkbox do tema (``Checkbox``) no canto superior direito e liga/desliga ao clicar no cartão todo; os botões "Ligado/Desligado" saíram; "Ver prévia da textura" virou o botão "Prévia da textura", visível só no hover do cartão; "Ativar todas" vira "Desativar todas" (``disableAllFinishes()``, um único passo de undo). Ver ``AGENTS.md`` §2.8.
+> - **Criação unificada**: as tasks 1.2/1.3 ("Post único" e "Carrossel" como botões separados) foram substituídas por **um único `+ Criar novo`** (`components/CreateDraftDropdown.tsx`), cujo menu repete as opções do `ModeDropdown`; a escolha de Carrossel continua passando pelo diálogo de formato.
 
 ## Visão Geral
 

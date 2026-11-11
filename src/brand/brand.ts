@@ -97,8 +97,8 @@ export const TEXT_PRESETS: Record<TextStyle, TextPreset> = {
     placeholder: 'Escreva seu texto aqui',
   },
   highlight: {
-    label: 'Destaque',
-    hint: 'Londrina com efeito',
+    label: 'Texto com borda',
+    hint: 'Londrina com traçado',
     fontFamily: FONT_HEADLINE,
     fontWeight: '900',
     fontSize: 80,

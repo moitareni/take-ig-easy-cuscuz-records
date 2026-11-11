@@ -1,5 +1,15 @@
 # Documento de Requisitos: Carrossel de Posts para Instagram
 
+> **Leva 4 (11/11/2026) — o que prevalece**
+> As mudanças desta leva são no **editor de 6 etapas compartilhado** pelos slides,
+> portanto valem para cada slide do carrossel. Fonte de verdade: `AGENTS.md`.
+> - **Passo 6 · Textura**: o botão "Restaurar padrão" e a action `resetFinish()` foram **removidos**; "Ativar todas"/"Desativar todas" são o único caminho em lote (um passo de undo cada). `finish` continua **por slide**.
+> - **Log "Na folha"** (Passos 2, 3 e 4): `components/ui/ElementListRow.tsx` torna a caixa inteira clicável (a lixeira, irmã do botão, só exclui); a numeração `"1. ..."` virou ponto de lista em Enfeites e Textos; Imagens mantêm miniatura + nome, sem ponto.
+> - **Card de rascunho**: o lápis `Renomear` some durante a edição inline do título e volta na confirmação/cancelamento.
+> - **Passo 4**: três botões de texto lado a lado; "Cor da Marca" → **"Cor do texto"**; opções de "Caixa de destaque" com a altura dos swatches (38 px).
+> - **Testes**: 161 unitários; e2e 79 passed / 3 skipped (82 testes em desktop + mobile).
+> - **Pendência**: o defeito "incrementar a tela antes de haver rascunhos" foi **descartado** nesta leva e será detalhado depois; nada mudou no boot/home.
+>
 > **Revisão 10/11/2026 — release v3 "Meus rascunhos" + levas de correção 1, 2 e 3.**
 > Este documento descreve a **primeira** implementação do carrossel. A release v3
 > substituiu a arquitetura de persistência e a tela inicial; os pontos abaixo
@@ -12,11 +22,12 @@
 > - **Logo**: presets de posição seguem `layoutGuides.margin` (ou 0 com guias/margens desativadas).
 > - **Feedback de carregamento**: selo temático `canvas-busy-overlay` sobre a folha ao trocar fundo / adicionar enfeite, foto, logo ou textura **apenas se a espera passar de ~200 ms** (some assim que o item fica pronto; sem tempo mínimo), spinner na miniatura escolhida, `preloadImage` em hover/foco, pré-decode das fotos importadas e texturas globais carregadas **só quando ligadas**. Ver `AGENTS.md` §2.14 e §2.17.
 > - **Textura (Leva 3)**: cada acabamento vira um cartão compacto sem texto explicativo, com checkbox do tema (``Checkbox``) no canto superior direito e liga/desliga ao clicar no cartão todo; os botões "Ligado/Desligado" saíram; "Ver prévia da textura" virou o botão "Prévia da textura", visível só no hover do cartão; "Ativar todas" vira "Desativar todas" (``disableAllFinishes()``, um único passo de undo). Ver ``AGENTS.md`` §2.8.
+> - **Criação unificada**: os pares de botões da home ("Carrossel" + "Post único" no header, "Criar carrossel" + "Criar post único" no quadro vazio) viraram **um único `+ Criar novo`** (`components/CreateDraftDropdown.tsx`), que abre as mesmas duas opções do `ModeDropdown` (mesmos ícones e dicas). Escolher "Carrossel" continua abrindo o diálogo de formato.
 >
 > **O que mudou**
 > - **Não existe mais "Tela Inicial" com `ModeSelector`.** A home "Meus rascunhos"
->   (`screens/HomeScreen.tsx`) é sempre a primeira tela. Cria-se um carrossel pelo
->   botão "Carrossel"/"Criar carrossel" e escolhe-se o formato num diálogo; a criação
+>   (`screens/HomeScreen.tsx`) é sempre a primeira tela. Cria-se um carrossel pela
+>   opção "Carrossel" do menu `+ Criar novo` e escolhe-se o formato num diálogo; a criação
 >   de post único e a conversão de modos acontecem **no mesmo rascunho**.
 > - **Persistência migrou de `localStorage` para IndexedDB**: `DraftMeta` +
 >   `CarouselDraftBody { slides, activeSlideIndex, format }` em `lib/drafts/`,
@@ -88,11 +99,11 @@ O modo **Post único** existente não sofre nenhuma alteração.
 
 #### Critérios de Aceitação
 
-1. THE App SHALL exibir sempre, como primeira tela, a home "Meus rascunhos" com a lista de rascunhos e as ações de criação ("Post único" / "Carrossel" no header quando há rascunhos; "Criar post único" / "Criar carrossel" no quadro quando a lista está vazia). Antes de entrar no Modo Carrossel, THE App SHALL solicitar o PostFormat em diálogo próprio.
+1. THE App SHALL exibir sempre, como primeira tela, a home "Meus rascunhos" com a lista de rascunhos e **um único gatilho de criação `+ Criar novo`** (`CreateDraftDropdown`, `create-draft-trigger`) — no header quando há rascunhos, no quadro central quando a lista está vazia. O menu SHALL oferecer "Post único" e "Carrossel" com os mesmos ícones/dicas do `ModeDropdown`. Antes de entrar no Modo Carrossel, THE App SHALL solicitar o PostFormat em diálogo próprio.
 
-2. WHEN a usuária seleciona "Post único"/"Criar post único" na home, THE App SHALL abrir o Editor de Slide no Modo Post Único, sem exibir a Tira de Miniaturas.
+2. WHEN a usuária seleciona "Post único" no menu `+ Criar novo` da home, THE App SHALL abrir o Editor de Slide no Modo Post Único, sem exibir a Tira de Miniaturas.
 
-3. WHEN a usuária seleciona "Carrossel"/"Criar carrossel" na home e confirma o PostFormat no diálogo, THE App SHALL abrir o Modo Carrossel com um slide inicial vazio e exibir a Tira de Miniaturas.
+3. WHEN a usuária seleciona "Carrossel" no menu `+ Criar novo` da home e confirma o PostFormat no diálogo, THE App SHALL abrir o Modo Carrossel com um slide inicial vazio e exibir a Tira de Miniaturas.
 
 4. WHEN a usuária está no Modo Post Único e solicita trocar para o Modo Carrossel pelo dropdown de modo, THE App SHALL exibir a confirmação amigável "Trocar pra Carrossel?" e, ao confirmar, converter o `Doc` e o `FinishState` atuais no primeiro slide **do mesmo rascunho** (`activeDraftId` preservado), abrindo o Modo Carrossel com esse slide como Slide Ativo.
 

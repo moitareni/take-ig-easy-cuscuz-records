@@ -5,6 +5,7 @@ import {
   draftsSnapshot,
   openCarousel,
   openSingle,
+  pickCarousel,
   waitForHome,
 } from './helpers';
 
@@ -23,12 +24,10 @@ test.describe('Momento 0 — home Meus rascunhos (release v.3)', () => {
     await expect(page.getByRole('banner').getByText('Meus rascunhos', { exact: true })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Meus rascunhos' })).toBeVisible();
 
-    // No estado vazio, os botões de criação ficam apenas no quadro central (sem redundância no header).
+    // No estado vazio, a criação fica apenas no quadro central (sem redundância no header).
     await expect(page.getByRole('button', { name: 'Baixar backup' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Post único', exact: true })).toHaveCount(0);
-    await expect(page.getByRole('button', { name: 'Carrossel', exact: true })).toHaveCount(0);
-    await expect(page.getByRole('button', { name: 'Criar post único', exact: true })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Criar carrossel', exact: true })).toBeVisible();
+    await expect(page.getByTestId('create-draft-trigger')).toHaveCount(1);
+    await expect(page.getByTestId('create-draft-trigger')).toContainText('Criar novo');
 
     // Estado vazio explica o que fazer sem termos técnicos.
     await expect(page.getByText('Nenhum rascunho por aqui ainda')).toBeVisible();
@@ -39,9 +38,8 @@ test.describe('Momento 0 — home Meus rascunhos (release v.3)', () => {
     await page.goto('/');
     await waitForHome(page);
 
-    await page.getByRole('button', { name: 'Criar carrossel', exact: true }).click();
+    await pickCarousel(page);
     const dialog = page.getByRole('dialog', { name: /Escolha o formato do carrossel/ });
-    await expect(dialog).toBeVisible();
     await expect(dialog.getByText('Você escolhe o tamanho uma vez e todos os cards saem iguais.')).toBeVisible();
 
     const glyphs = dialog.getByTestId('format-glyph');
@@ -56,7 +54,7 @@ test.describe('Momento 0 — home Meus rascunhos (release v.3)', () => {
 
     await dialog.getByRole('button', { name: 'Voltar' }).click();
     await expect(dialog).toHaveCount(0);
-    await expect(page.getByRole('button', { name: 'Criar post único', exact: true })).toBeVisible();
+    await expect(page.getByTestId('create-draft-trigger')).toBeVisible();
   });
 
   test('M0.5: selo junto à folha somado ao contador da tira', async ({ page }) => {
@@ -90,9 +88,9 @@ test.describe('Momento 0 — home Meus rascunhos (release v.3)', () => {
     await page.getByRole('option', { name: /Carrossel/ }).click();
 
     const confirm = page.getByRole('dialog').filter({ hasText: 'Trocar pra Carrossel?' });
-    await expect(confirm).toContainText('Troco pra Carrossel e levo as imagens que você já enviou?');
+    await expect(confirm).toContainText('Seu post vira o primeiro card 🎠');
     await expect(confirm.getByRole('button', { name: 'Ficar aqui' })).toBeVisible();
-    await confirm.getByRole('button', { name: 'Bora, trocar!' }).click();
+    await confirm.getByRole('button', { name: 'Trocar!' }).click();
 
     await expect(page.getByRole('navigation', { name: 'Tira de slides do carrossel' })).toBeVisible();
     const snap = await carouselSnapshot(page);
@@ -110,7 +108,7 @@ test.describe('Momento 0 — home Meus rascunhos (release v.3)', () => {
 
     const picker = page.getByRole('dialog', { name: 'Escolher slide para Post Único' });
     await expect(picker).toBeVisible();
-    await expect(picker).toContainText('os outros slides saem deste rascunho');
+    await expect(picker).toContainText('Escolha um dos slides pra levar pro post único.');
     await picker.getByRole('button', { name: 'Confirmar' }).click();
 
     await expect(page.getByRole('navigation', { name: 'Tira de slides do carrossel' })).toHaveCount(0);
@@ -129,7 +127,7 @@ test.describe('Momento 0 — home Meus rascunhos (release v.3)', () => {
     await page
       .getByRole('dialog')
       .filter({ hasText: 'Trocar pra Carrossel?' })
-      .getByRole('button', { name: 'Bora, trocar!' })
+      .getByRole('button', { name: 'Trocar!' })
       .click();
     expect((await carouselSnapshot(page))?.mode).toBe('carousel');
 
@@ -146,7 +144,7 @@ test.describe('Momento 0 — home Meus rascunhos (release v.3)', () => {
   test('M0.3: dropdown com teclado, tooltip nativo e clique fora', async ({ page }) => {
     await openSingle(page);
     const trigger = page.getByTestId('mode-dropdown-trigger');
-    await expect(trigger).toContainText('modo');
+    await expect(trigger).toContainText('Modo');
     await expect(trigger).toHaveAttribute('title', /Escolha entre Post único/);
     await expect(trigger).toHaveAttribute('aria-haspopup', 'listbox');
     await expect(trigger).toHaveAttribute('aria-expanded', 'false');
@@ -174,7 +172,7 @@ test.describe('Momento 0 — home Meus rascunhos (release v.3)', () => {
     await page.goto('/');
     await waitForHome(page);
 
-    const createBox = await page.getByRole('button', { name: 'Criar carrossel', exact: true }).boundingBox();
+    const createBox = await page.getByTestId('create-draft-trigger').boundingBox();
     expect(createBox!.height).toBeGreaterThanOrEqual(24);
 
     await openSingle(page);
@@ -186,7 +184,7 @@ test.describe('Momento 0 — home Meus rascunhos (release v.3)', () => {
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.goto('/');
     await waitForHome(page);
-    const card = page.getByRole('button', { name: 'Criar post único', exact: true });
+    const card = page.getByTestId('create-draft-trigger');
     const duration = await card.evaluate((el) => getComputedStyle(el).transitionDuration);
     expect(parseFloat(duration)).toBeLessThan(0.01);
   });
@@ -194,7 +192,7 @@ test.describe('Momento 0 — home Meus rascunhos (release v.3)', () => {
   test('M0: glifos decorativos fora da árvore e gatilho rotulado', async ({ page }) => {
     await page.goto('/');
     await waitForHome(page);
-    await page.getByRole('button', { name: 'Criar carrossel', exact: true }).click();
+    await pickCarousel(page);
     const dialog = page.getByRole('dialog', { name: /Escolha o formato do carrossel/ });
     await expect(dialog.getByTestId('format-glyph').first()).toHaveAttribute('aria-hidden', 'true');
     await dialog.getByRole('button', { name: 'Bora criar carrossel!' }).click();

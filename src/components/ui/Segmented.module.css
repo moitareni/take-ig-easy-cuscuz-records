@@ -8,6 +8,18 @@
   width: 100%;
 }
 
+.row {
+  flex-direction: row;
+}
+
+.column {
+  flex-direction: column;
+}
+
+.column .segment {
+  flex: none;
+}
+
 .segment {
   flex: 1;
   display: inline-flex;

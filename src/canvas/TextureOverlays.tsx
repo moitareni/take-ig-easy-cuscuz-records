@@ -14,7 +14,7 @@ export interface TextureOverlaysProps {
 }
 
 /**
- * Acabamento do post (passo 6): papel amassado + textura de borda em overlay
+ * Acabamento do post (passo 6): papel amassado + Craquelado em overlay
  * + grain monocromático em overlay, cobrindo a folha inteira.
  * Nunca intercepta eventos nem entra na seleção — e entra no export
  * porque vive dentro do Layer (diferente das guias, que se escondem).
@@ -81,7 +81,7 @@ export const TextureOverlays: React.FC<TextureOverlaysProps> = ({
         />
       )}
 
-      {/* Textura de borda (BORDER/TEXTURA-BORDA em overlay) */}
+      {/* Craquelado (BORDER/TEXTURA-BORDA em overlay) */}
       {finish.borderTexture?.enabled && borderImage && (
         <KonvaImage
           image={borderImage}

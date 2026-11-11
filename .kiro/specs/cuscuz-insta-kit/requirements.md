@@ -1,5 +1,13 @@
 # Documento de Requisitos — Cuscuz Records Insta Kit
 
+> **Leva 4 (11/11/2026) — o que prevalece**
+> - **Passo 6 · Textura**: o botão **"Restaurar padrão"** e a action `resetFinish()` foram **removidos**; "Ativar todas"/"Desativar todas" são o único caminho para ligar/desligar os três acabamentos de uma vez (um único passo de undo, preservando opacidades/intensidade). Ver `AGENTS.md` §2.8.
+> - **Log "Na folha"** (Passos 2, 3 e 4): passa a usar o componente único `components/ui/ElementListRow.tsx` — **a caixa retangular inteira é clicável** para selecionar (menos a lixeira, que é irmã do botão e só exclui); a numeração `"1. ..."` deu lugar a um **ponto de lista personalizado** em Enfeites e Textos; Imagens mantêm miniatura + nome, sem ponto. Ver `AGENTS.md` §2.10 e §2.15.
+> - **Card de rascunho na home**: ao clicar no lápis `Renomear` **ou** no título, o ícone **desaparece** durante a edição e só volta quando o nome é confirmado (Enter/blur) ou cancelado (Escape). Ver `AGENTS.md` §2.14.
+> - **Passo 4 · Editar Texto**: os três botões (`+ Título` / `+ Texto` / `+ Texto com borda`) ficam **lado a lado** em `.buttonGrid3` (ícone em cima, nome embaixo); **"Cor da Marca" virou "Cor do texto"**; `Caixa de destaque` usa `.dualColumn` com `align-items: stretch` + `Segmented className`, para cada opção ter a **altura de um swatch (38 px)** e os dois blocos ficarem simétricos. Ver `AGENTS.md` §2.15.
+> - **Testes**: 161 unitários em 15 arquivos; e2e **79 passed / 3 skipped** (82 testes em desktop + mobile), com 3 novos testes de regressão da Leva 4 em `e2e/regressoes.spec.ts`.
+> - **Pendência registrada**: o defeito "incrementar a tela antes de haver rascunhos" foi **descartado** nesta leva e será detalhado pelo Reni depois; nada foi alterado no boot/home por conta dele.
+>
 > **Revisão 10/11/2026 — release v3 "Meus rascunhos" + levas de correção 1, 2 e 3.**
 > Este documento descreve a implementação de base. As seções abaixo seguem válidas como
 > histórico, mas os pontos desta revisão **prevalecem** sobre elas. A fonte de verdade
@@ -7,6 +15,8 @@
 >
 > **Leva 3 (10/11/2026) — o que prevalece**
 > - **Header/Dock**: logo da Cuscuz e botão "Começar do zero" removidos do Header; selo de autosave ao lado do título; `ModeDropdown` vem **antes** de `Exportar`/`Exportação`; Desfazer/Refazer ficam na base do dock direito.
+> - **Criação unificada na home**: os antigos pares de botões ("Carrossel" + "Post único" no header, "Criar carrossel" + "Criar post único" no quadro vazio) viraram **um único `+ Criar novo`** (`components/CreateDraftDropdown.tsx`, `data-testid="create-draft-trigger"`), que abre as mesmas duas opções do `ModeDropdown` do editor (mesmos ícones `Sparkles`/`Images` e dicas). O gatilho fica no header quando há rascunhos e no quadro central quando a lista está vazia (critério 2 do Requisito 13).
+> - **Passo 4 · Editar Texto**: o botão de criação virou **"+ Texto com borda"** (era "Destaque (com efeito)"); o rótulo **"Borda de Destaque"** virou **"Caixa de destaque"**; o botão **"Efeito da Marca"** saiu do painel; "Cor da Marca" (2 colunas) e "Caixa de destaque" (opções empilhadas) ficam lado a lado, com mais respiro vertical no card (`.editStack`). Ver `AGENTS.md` §2.5 e §2.15.
 > - **Renomear sem salto**: título editável como pílula creme (sem borda/outline, auto-dimensionada, máx. 80 caracteres, texto selecionado ao focar) no Header **e** no card da home (clique no título ou no lápis "Renomear"); o card ganhou o botão direto "Exportar".
 > - **Seleção** de texto/realces em amarelo da marca (`--c-amarelo`); scrollbars finas e arredondadas em todos os navegadores (`FirefoxRoundScrollbar`).
 > - **Logo**: presets de posição seguem `layoutGuides.margin` (ou 0 com guias/margens desativadas).
@@ -65,7 +75,7 @@ O **Cuscuz Records Insta Kit** é uma aplicação web estática (React 18 + Type
 - **GC** (Garbage Collector de Órfãos): rotina que remove blobs do IndexedDB sem referência no Doc, executada no boot.
 - **Efeito da Marca**: combinação de traçado creme 2 px externo + sombra projetada preta, conforme especificado em `src/brand/brand.ts → BRAND_EFFECT`.
 - **Borda de Destaque**: borda retangular ao redor de um elemento de texto, nas variantes Amarela ou Barro, com textura `textura-borda` em `soft-light`.
-- **Finish**: conjunto dos três acabamentos da Etapa 6 (papel amassado, textura de borda, granulado), representados em `src/types.ts → FinishState`.
+- **Finish**: conjunto dos três acabamentos da Etapa 6 (papel amassado, Craquelado, granulado), representados em `src/types.ts → FinishState`.
 - **Snap**: comportamento magnético que alinha o elemento arrastado a guias de layout ou ao centro da Folha.
 - **Undo/Redo**: histórico de 50 passos com debounce de 400 ms, gerenciado pelo Zustand com zundo (`src/store/editorStore.ts`).
 - **Paleta Oficial**: as seis cores da marca definidas em `src/brand/brand.ts → COLORS`: Preto `#0b0500`, Barro `#942911`, Amarelo `#f8ce2b`, Amarelo Quente `#f6c01f`, Verde Ceará `#698f3f`, Creme `#f7ebcd`.
@@ -173,10 +183,10 @@ O **Cuscuz Records Insta Kit** é uma aplicação web estática (React 18 + Type
 
 ### Critérios de Aceitação
 
-1. THE Editor SHALL disponibilizar três estilos de texto pré-configurados: **Título** (`Londrina Solid` peso 900, 120 px, maiúsculas, preto), **Destaque** (`Londrina Solid` peso 900, 80 px, maiúsculas, preto, Efeito da Marca ativo) e **Texto** (`PT Sans Narrow` bold 700, 44 px, preto).
+1. THE Editor SHALL disponibilizar três estilos de texto pré-configurados: **Título** (`Londrina Solid` peso 900, 120 px, maiúsculas, preto), **Texto com borda** (estilo `highlight`: `Londrina Solid` peso 900, 80 px, maiúsculas, preto, Efeito da Marca ativo) e **Texto** (`PT Sans Narrow` bold 700, 44 px, preto). O botão de criação do `highlight` na UI é **"+ Texto com borda"**; o painel **não** oferece mais o botão "Efeito da Marca" (o efeito fica sempre ligado nesse estilo).
 2. THE Editor SHALL restringir a paleta de cores de texto às 6 cores oficiais da Paleta Oficial (`src/brand/brand.ts → COLORS`).
 3. WHEN o Efeito da Marca estiver ativado, THE Editor SHALL renderizar o texto com traçado na cor Creme (`#f7ebcd`) de 2 px em posição externa e sombra projetada na cor Preta (`#0b0500`) com opacidade 46%, ângulo 90°, distância 11 px e desfoque 4 px, conforme `BRAND_EFFECT`.
-4. THE Editor SHALL oferecer a Borda Amarela (`#f8ce2b`) com textura `textura-borda` em blend mode `soft-light` à opacidade 100%, e a Borda Barro (`#942911`) com a mesma textura em `soft-light` à opacidade 44%, conforme `BORDERS`.
+4. THE Editor SHALL oferecer a Borda Amarela (`#f8ce2b`) com textura `textura-borda` em blend mode `soft-light` à opacidade 100%, e a Borda Barro (`#942911`) com a mesma textura em `soft-light` à opacidade 44%, conforme `BORDERS`. Na UI o grupo é rotulado **"Caixa de destaque"** e vive ao lado de "Cor da Marca" (2 colunas), com as três opções empilhadas.
 5. WHILE houver pelo menos um `TextEl` do estilo `title` ou `highlight` no Doc, THE Editor SHALL impedir que qualquer `TextEl` do estilo `body` tenha `fontSize` maior que o menor `fontSize` dentre os elementos `title` e `highlight` presentes.
 6. WHILE não houver nenhum `TextEl` do estilo `title` ou `highlight` no Doc, THE Editor SHALL limitar o `fontSize` de `TextEl` do estilo `body` a no máximo 72 px (`BODY_MAX_WITHOUT_HEADING`).
 7. WHEN o usuário tenta aumentar o `fontSize` de um `TextEl` do estilo `body` acima do limite, THE Editor SHALL travar no valor máximo permitido e exibir a notificação: "Opa! O texto não pode ficar maior que o título 🙈".
@@ -214,10 +224,10 @@ O **Cuscuz Records Insta Kit** é uma aplicação web estática (React 18 + Type
 
 ### Critérios de Aceitação
 
-1. THE Editor SHALL oferecer três acabamentos independentes na Etapa 5: **Papel amassado** (overlay de `papel-textura.webp`), **Textura de borda** (overlay de `textura-borda.webp`) e **Granulado** (grão gaussiano gerado via Mulberry32).
+1. THE Editor SHALL oferecer três acabamentos independentes na Etapa 5: **Papel amassado** (overlay de `papel-textura.webp`), **Craquelado** (overlay de `textura-borda.webp`) e **Granulado** (grão gaussiano gerado via Mulberry32).
 2. THE Editor SHALL inicializar todos os três acabamentos desativados (`FINISH_ENABLED_DEFAULT = false`); nenhum acabamento deve ser ativado automaticamente ao criar ou carregar um post.
 3. THE Editor SHALL permitir que o usuário ajuste a opacidade do Papel amassado no intervalo 0–100% (`PAPER_OPACITY_MIN`–`PAPER_OPACITY_MAX`), com valor padrão de 40% (`PAPER_OPACITY_DEFAULT`).
-4. THE Editor SHALL permitir que o usuário ajuste a opacidade da Textura de borda no intervalo 0–100% (`BORDER_TEXTURE_OPACITY_MIN`–`BORDER_TEXTURE_OPACITY_MAX`), com valor padrão de 40% (`BORDER_TEXTURE_OPACITY_DEFAULT`).
+4. THE Editor SHALL permitir que o usuário ajuste a opacidade da Craquelado no intervalo 0–100% (`BORDER_TEXTURE_OPACITY_MIN`–`BORDER_TEXTURE_OPACITY_MAX`), com valor padrão de 40% (`BORDER_TEXTURE_OPACITY_DEFAULT`).
 5. THE Editor SHALL permitir que o usuário ajuste a intensidade do Granulado no intervalo 0–100% (`GRAIN_INTENSITY_MIN`–`GRAIN_INTENSITY_MAX`), com valor padrão de 50% (`GRAIN_INTENSITY_DEFAULT`).
 6. THE Editor SHALL disponibilizar três tamanhos de grão: **P** (fino, `patternScale` 0,5), **M** (médio, `patternScale` 1) e **G** (grosso, `patternScale` 2), com padrão **P** (`GRAIN_SIZE_DEFAULT`).
 7. THE Editor SHALL gerar o Granulado com distribuição gaussiana usando o PRNG Mulberry32 inicializado com o seed fixo `GRAIN_SEED` (20261016) e desvio padrão `GRAIN_STDDEV` (30), garantindo que o grão seja **idêntico** no preview interativo e na exportação.
@@ -363,12 +373,12 @@ O **Cuscuz Records Insta Kit** é uma aplicação web estática (React 18 + Type
 ### Critérios de Aceitação
 
 1. THE App SHALL exibir o título "Meus rascunhos" sem descrição permanente; a explicação SHALL ficar no balão do `HelpTip` (`(?)`), acessível por hover, foco, toque e fechável por `Escape`/clique fora, com `role="tooltip"` e `aria-describedby`.
-2. WHEN `drafts.length === 0 && listStatus === 'ready'`, THEN THE App SHALL exibir os botões de criação **apenas** dentro do quadro de rascunhos ("Criar carrossel" / "Criar post único") e ocultar os equivalentes do header; THE App SHALL manter "Baixar backup" e, em `listStatus !== 'ready'`, manter os botões do header como saída.
+2. WHEN `drafts.length === 0 && listStatus === 'ready'`, THEN THE App SHALL exibir a criação **apenas** dentro do quadro de rascunhos (`+ Criar novo`, `CreateDraftDropdown`) e ocultar o equivalente do header; THE App SHALL manter "Baixar backup" e, em `listStatus !== 'ready'`, manter o gatilho do header como saída. O menu SHALL oferecer "Post único" e "Carrossel" com os mesmos ícones/dicas do `ModeDropdown` do editor.
 3. THE App SHALL oferecer o espelhamento do fundo na `BackgroundMirrorToolbar` do dock direito, com `aria-label` "Espelhar fundo ↔" / "Espelhar fundo ↕" e estado `active`, visível quando `step === 0`, há fundo escolhido e nenhum elemento selecionado; THE App SHALL remover o card "Opções do Fundo" do painel, mantendo os controles de corte 1:1 ("Corte vertical", "Topo", "Centro", "Base") como bloco inline.
 4. THE App SHALL permitir renomear o projeto clicando no `<h1>` do Header: o nome vira `<input aria-label="Nome do projeto">`; Enter/blur confirma, `Escape` cancela, e `renameActiveDraft()` SHALL atualizar `activeMeta` com `titleSource: 'user'`, gravar `saveDraftRecord` e transmitir `drafts-changed` (o autosave não pode sobrescrever o nome).
 5. THE App SHALL oferecer "Ativar todas" na Etapa 6 via `enableAllFinishes()` — um único `set`, um único passo de undo, preservando opacidades/intensidade — e SHALL desabilitá-lo quando os três acabamentos já estiverem ligados.
-6. THE App SHALL manter as prévias de papel amassado e textura de borda fechadas por padrão em `<details>/<summary>` ("Ver prévia da textura"), montando o `PreviewImage` somente quando abertas; `summary:focus-visible` SHALL receber o outline verde.
+6. THE App SHALL manter as prévias de papel amassado e Craquelado fechadas por padrão em `<details>/<summary>` ("Ver prévia da textura"), montando o `PreviewImage` somente quando abertas; `summary:focus-visible` SHALL receber o outline verde.
 7. THE App SHALL aplicar `scrollbar-color: var(--c-amarelo-quente) var(--c-surface-muted)` e `scrollbar-width: thin` em `html`, mantendo as regras `::-webkit-scrollbar*` (inclusive `:active` e `-corner`) e `scrollbar-gutter: stable` nos containers de rolagem.
 8. THE App SHALL usar os 12 labels padronizados dos enfeites em Title Case (ex.: "Arabesco floral", "Faixa de espinhos", "Tocador retrô", "Janela retrô"), definidos em `DECOR_OVERRIDES`; THE App SHALL **preservar todos os `id`s**, pois estão gravados nos `Doc` dos rascunhos e `sanitize()` descarta enfeites com `id` desconhecido.
-9. THE App SHALL manter `e2e/helpers.ts` com `CREATE_SINGLE` / `CREATE_CAROUSEL` (regex que cobre os dois rótulos de criação) e `waitForHome()` independente do estado da lista, garantindo que nenhuma spec quebre com a mudança do item 2.
-10. THE App SHALL manter a suíte de regressão em `e2e/regressoes.spec.ts` cobrindo reload após conversão para carrossel, tira no primeiro frame, formato somente no post único, balão `(?)`, botões do estado vazio, espelhamento no dock, rename inline, dropdown de prévias, "Ativar todas" com undo e `scrollbar-color`.
+9. THE App SHALL manter `e2e/helpers.ts` com `openCreateMenu()` / `createSingle()` / `pickCarousel()` / `createCarousel()` sobre o gatilho `+ Criar novo` (`create-draft-trigger`) e `waitForHome()` independente do estado da lista, garantindo que nenhuma spec quebre com a mudança do item 2.
+10. THE App SHALL manter a suíte de regressão em `e2e/regressoes.spec.ts` cobrindo reload após conversão para carrossel, tira no primeiro frame, formato somente no post único, balão `(?)`, o gatilho `+ Criar novo` no header e no quadro vazio, espelhamento no dock, rename inline, dropdown de prévias, "Ativar todas" com undo e `scrollbar-color`.

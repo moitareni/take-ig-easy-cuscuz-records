@@ -92,7 +92,6 @@ export const TextureStep: React.FC = () => {
   const setGrain = useEditor((s) => s.setGrain);
   const enableAllFinishes = useEditor((s) => s.enableAllFinishes);
   const disableAllFinishes = useEditor((s) => s.disableAllFinishes);
-  const resetFinish = useEditor((s) => s.resetFinish);
   const paper = getPaperTexture();
   const border = getBorderTexture();
 
@@ -154,16 +153,16 @@ export const TextureStep: React.FC = () => {
         />
       </TextureOption>
 
-      {/* Textura de borda (BORDER) em overlay */}
+      {/* craquelado (BORDER) em overlay */}
       <TextureOption
-        title="Textura de borda"
+        title="Craquelado"
         enabled={finish.borderTexture.enabled}
         onToggle={(next) => {
           if (next) announceCanvasActivity('texture', 'Aplicando textura... ✨', border?.src);
           setBorderTexture({ enabled: next });
         }}
         previewSrc={border?.src}
-        previewAlt="Prévia da textura de borda"
+        previewAlt="Prévia da craquelado"
       >
         <Slider
           label="Opacidade da textura"
@@ -200,11 +199,6 @@ export const TextureStep: React.FC = () => {
           onChange={(size) => setGrain({ size, enabled: true })}
         />
       </TextureOption>
-
-      {/* Volta ao acabamento padrão (desligado) */}
-      <Button variant="ghost" size="sm" fullWidth onClick={resetFinish}>
-        Restaurar padrão ✨
-      </Button>
     </div>
   );
 };

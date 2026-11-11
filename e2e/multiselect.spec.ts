@@ -86,7 +86,7 @@ async function setup(page: Page) {
   await page.locator('button:has-text("+ Título")').click(); // t1 no centro
   await page.locator('button:has-text("+ Título")').click(); // t2 (+32)
   await nudge(page, 'ArrowDown', 30);
-  await page.locator('button:has-text("+ Texto")').click(); // body
+  await page.getByRole('button', { name: '+ Texto', exact: true }).click(); // body
   await nudge(page, 'ArrowUp', 30);
   // Ajusta o body para 75px (próximo ao t2 de 80px) para testar o teto Texto ≤ Título
   const range = page.locator('input[type="range"]');

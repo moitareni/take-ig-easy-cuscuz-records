@@ -12,6 +12,7 @@ import { FONT_SIZE_MIN, HEADING_FONT_SIZE_MAX } from '../brand/brand';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { ColorSwatches } from '../components/ui/ColorSwatches';
+import { ElementListRow } from '../components/ui/ElementListRow';
 import { IconButton } from '../components/ui/IconButton';
 import { Segmented } from '../components/ui/Segmented';
 import { Slider } from '../components/ui/Slider';
@@ -49,32 +50,35 @@ export const TextStep: React.FC = () => {
       {/* Botões de Adicionar Novos Textos */}
       <div className={styles.section}>
         <h3 className={styles.sectionTitle}>Adicionar à folha</h3>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+        <div className={styles.buttonGrid3}>
           <Button
             variant="secondary"
-            size="md"
+            size="sm"
+            className={styles.addTextButton}
             icon={<Heading size={18} strokeWidth={2.5} />}
             onClick={() => addText('title')}
           >
-            + Título (Londrina Black)
+            + Título
           </Button>
 
           <Button
             variant="secondary"
-            size="md"
+            size="sm"
+            className={styles.addTextButton}
             icon={<Type size={18} strokeWidth={2.5} />}
             onClick={() => addText('body')}
           >
-            + Texto (PT Sans Narrow)
+            + Texto
           </Button>
 
           <Button
             variant="secondary"
-            size="md"
+            size="sm"
+            className={styles.addTextButton}
             icon={<Sparkles size={18} strokeWidth={2.5} />}
             onClick={() => addText('highlight')}
           >
-            + Destaque (com efeito)
+            + Texto com borda
           </Button>
         </div>
       </div>
@@ -94,90 +98,82 @@ export const TextStep: React.FC = () => {
           }
         >
           {/* Conteúdo do Texto */}
-          <div className={styles.section}>
-            <textarea
-              value={selectedText.text}
-              onChange={(e) => updateElement(selectedText.id, { text: e.target.value })}
-              placeholder="Digite o texto aqui..."
-              rows={3}
-              className={styles.textarea}
+          <div className={styles.editStack}>
+            <div className={styles.section}>
+              <textarea
+                value={selectedText.text}
+                onChange={(e) => updateElement(selectedText.id, { text: e.target.value })}
+                placeholder="Digite o texto aqui..."
+                rows={3}
+                className={styles.textarea}
+              />
+            </div>
+
+            {/* Slider de Tamanho com marcador de limite e regra Texto <= Título */}
+            <Slider
+              label="Tamanho da Fonte"
+              value={selectedText.fontSize}
+              min={limits.min}
+              max={limits.max}
+              step={1}
+              limitMarker={
+                selectedText.style === 'body'
+                  ? { value: limits.max, label: 'Limite permitido pelo menor título' }
+                  : undefined
+              }
+              onChange={(val) => {
+                updateElement(selectedText.id, { fontSize: val });
+              }}
             />
-          </div>
 
-          {/* Slider de Tamanho com marcador de limite e regra Texto <= Título */}
-          <Slider
-            label="Tamanho da Fonte"
-            value={selectedText.fontSize}
-            min={limits.min}
-            max={limits.max}
-            step={1}
-            limitMarker={
-              selectedText.style === 'body'
-                ? { value: limits.max, label: 'Limite permitido pelo menor título' }
-                : undefined
-            }
-            onChange={(val) => {
-              updateElement(selectedText.id, { fontSize: val });
-            }}
-          />
+            {/* Alinhamento Horizontal do Parágrafo */}
+            <div className={styles.section}>
+              <span className={styles.fieldLabel}>Alinhamento do Texto</span>
+              <Segmented
+                options={[
+                  { value: 'left', label: <AlignLeft size={16} strokeWidth={2.5} />, hint: 'À esquerda' },
+                  { value: 'center', label: <AlignCenter size={16} strokeWidth={2.5} />, hint: 'Centralizado' },
+                  { value: 'right', label: <AlignRight size={16} strokeWidth={2.5} />, hint: 'À direita' },
+                ]}
+                value={selectedText.align}
+                onChange={(align) => updateElement(selectedText.id, { align })}
+              />
+            </div>
 
-          {/* Alinhamento Horizontal do Parágrafo */}
-          <div className={styles.section}>
-            <span style={{ fontSize: '15px', fontWeight: 700 }}>Alinhamento do Texto</span>
-            <Segmented
-              options={[
-                { value: 'left', label: <AlignLeft size={16} strokeWidth={2.5} />, hint: 'À esquerda' },
-                { value: 'center', label: <AlignCenter size={16} strokeWidth={2.5} />, hint: 'Centralizado' },
-                { value: 'right', label: <AlignRight size={16} strokeWidth={2.5} />, hint: 'À direita' },
-              ]}
-              value={selectedText.align}
-              onChange={(align) => updateElement(selectedText.id, { align })}
-            />
-          </div>
+            {/* CAIXA ALTA */}
+            <div className={styles.row}>
+              <Button
+                variant={selectedText.uppercase ? 'primary' : 'secondary'}
+                size="sm"
+                fullWidth
+                onClick={() => updateElement(selectedText.id, { uppercase: !selectedText.uppercase })}
+              >
+                {selectedText.uppercase ? 'TUDO MAIÚSCULO (Ativo)' : 'Tudo maiúsculo'}
+              </Button>
+            </div>
 
-          {/* CAIXA ALTA */}
-          <div className={styles.row}>
-            <Button
-              variant={selectedText.uppercase ? 'primary' : 'secondary'}
-              size="sm"
-              fullWidth
-              onClick={() => updateElement(selectedText.id, { uppercase: !selectedText.uppercase })}
-            >
-              {selectedText.uppercase ? 'TUDO MAIÚSCULO (Ativo)' : 'Tudo maiúsculo'}
-            </Button>
-          </div>
+            {/* Cor do texto (2 colunas) + Caixa de destaque (empilhada) */}
+            <div className={styles.dualColumn}>
+              <ColorSwatches
+                value={selectedText.color}
+                onChange={(color) => updateElement(selectedText.id, { color })}
+              />
 
-          {/* Cores da Paleta */}
-          <ColorSwatches
-            value={selectedText.color}
-            onChange={(color) => updateElement(selectedText.id, { color })}
-          />
-
-          {/* Borda de Destaque (Amarela ou Barro com textura soft-light) */}
-          <div className={styles.section}>
-            <span style={{ fontSize: '15px', fontWeight: 700 }}>Borda de Destaque</span>
-            <Segmented<BorderKind>
-              options={[
-                { value: 'none', label: 'Nenhuma' },
-                { value: 'yellow', label: 'Amarela' },
-                { value: 'clay', label: 'Barro' },
-              ]}
-              value={selectedText.border}
-              onChange={(border) => updateElement(selectedText.id, { border })}
-            />
-          </div>
-
-          {/* Efeito da Marca (Traçado creme + Sombra projetada do Photoshop) */}
-          <div className={styles.row}>
-            <Button
-              variant={selectedText.brandEffect ? 'primary' : 'secondary'}
-              size="sm"
-              fullWidth
-              icon={<Sparkles size={16} strokeWidth={2.5} />}
-              onClick={() => updateElement(selectedText.id, { brandEffect: !selectedText.brandEffect })}
-            >
-              {selectedText.brandEffect ? 'Efeito da Marca (Ligado)' : 'Efeito da Marca (Desligado)'}
-            </Button>
+              <div className={styles.borderSection}>
+                <span className={styles.fieldLabel}>Caixa de destaque</span>
+                <Segmented<BorderKind>
+                  direction="column"
+                  className={styles.borderSegmented}
+                  options={[
+                    { value: 'none', label: 'Nenhuma' },
+                    { value: 'yellow', label: 'Amarela' },
+                    { value: 'clay', label: 'Barro' },
+                  ]}
+                  value={selectedText.border}
+                  onChange={(border) => updateElement(selectedText.id, { border })}
+                />
+              </div>
+            </div>
           </div>
         </Card>
       )}
@@ -186,49 +182,20 @@ export const TextStep: React.FC = () => {
       {currentTexts.length > 0 && (
         <div className={styles.section}>
           <h3 className={styles.sectionTitle}>Textos na folha ({currentTexts.length})</h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            {currentTexts.map((t, index) => {
-              const isSelected = selectedText?.id === t.id;
+          <div className={styles.elementList}>
+            {currentTexts.map((t) => {
+              const label = t.text ? `"${t.text.slice(0, 18)}..."` : 'Texto vazio';
               return (
-                <div
+                <ElementListRow
                   key={t.id}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    padding: '8px 12px',
-                    borderRadius: 'var(--radius-sm)',
-                    border: '2px solid var(--c-border)',
-                    backgroundColor: isSelected ? 'var(--c-amarelo)' : 'var(--c-surface)',
-                    boxShadow: 'var(--shadow-sm)',
-                  }}
-                >
-                  <button
-                    type="button"
-                    onClick={() => select(t.id)}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '8px',
-                      fontFamily: 'var(--font-headline)',
-                      fontSize: '15px',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
-                    <span>
-                      {index + 1}. {t.text ? `"${t.text.slice(0, 18)}..."` : 'Texto vazio'}
-                    </span>
-                  </button>
-                  <IconButton
-                    icon={<Trash2 size={14} strokeWidth={2.5} />}
-                    label="Remover"
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => removeElement(t.id)}
-                  />
-                </div>
+                  label={label}
+                  selectLabel={`Selecionar texto ${label}`}
+                  removeLabel="Remover"
+                  selected={selectedText?.id === t.id}
+                  onSelect={() => select(t.id)}
+                  onRemove={() => removeElement(t.id)}
+                  bullet
+                />
               );
             })}
           </div>

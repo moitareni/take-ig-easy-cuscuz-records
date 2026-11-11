@@ -44,8 +44,7 @@ export const SlidePickerDialog: React.FC<SlidePickerDialogProps> = ({
       >
         <h3 className={styles.title}>Qual slide você quer manter? 🌽</h3>
         <p className={styles.message}>
-          Escolha um slide pra levar pro post único. O que estiver nele — inclusive as imagens — vai
-          junto, e os outros slides saem deste rascunho. Dá para desfazer no aviso logo depois.
+          Escolha um dos slides pra levar pro post único.
         </p>
 
         <div className={styles.slideList}>

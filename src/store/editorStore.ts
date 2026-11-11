@@ -167,8 +167,6 @@ export interface EditorState {
   enableAllFinishes: () => void;
   /** Inverso de enableAllFinishes: desliga os três em um único passo de undo, preservando os ajustes. */
   disableAllFinishes: () => void;
-  /** Volta ao acabamento padrão (papel, granulado e textura de borda desligados). */
-  resetFinish: () => void;
   /** Define o zoom prendendo nos limites 25%–400%. */
   setZoom: (factor: number) => void;
   setFitWidth: (width: number) => void;
@@ -401,7 +399,6 @@ export const useEditor = create<EditorState>()(
                 },
               };
             }),
-          resetFinish: () => set({ finish: defaultFinish() }),
           setZoom: (factor) => {
             const next = clampZoom(factor);
             if (get().zoom !== next) set({ zoom: next });

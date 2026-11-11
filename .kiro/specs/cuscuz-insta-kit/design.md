@@ -1,5 +1,12 @@
 # Documento de Design Técnico — Cuscuz Records Insta Kit
 
+> **Leva 4 (11/11/2026) — o que prevalece**
+> - **Passo 6 · Textura**: "Restaurar padrão" e `resetFinish()` **removidos** do `TextureStep.tsx` e de `editorStore.ts`; só `enableAllFinishes()`/`disableAllFinishes()` (um `set` cada). Ver `AGENTS.md` §2.8.
+> - **Log "Na folha"**: novo `components/ui/ElementListRow.tsx` (+ `.module.css`) usado por `DecorationStep`, `ImageStep` e `TextStep`. O `<button>` de seleção cobre a caixa toda (`padding-right` reserva a lixeira); a lixeira é um `<span>` irmão posicionado à direita, então excluir nunca seleciona. `bullet` é opcional (true em Enfeites/Textos, false em Imagens, que usam `leading` com `PreviewImage`). As linhas ganham `.elementList` em `StepPanel.module.css`; os estilos órfãos `.row*`/`.rowLabel` saíram de `ImageStep.module.css`. Ver `AGENTS.md` §2.10 e §2.15.
+> - **Card de rascunho**: `{!isEditingTitle && <button Renomear>}` em `HomeScreen.tsx`; o `onMouseDown`/commit-duplo do lápis saiu e `.cardTitleEditWrapper` passou de `max-width: calc(100% - 34px)` para `100%`. Ver `AGENTS.md` §2.14.
+> - **Passo 4**: `Button size="sm"` + `className={styles.addTextButton}` dentro de `.buttonGrid3` (ícone em cima, `white-space: normal`); `ColorSwatches` rotulado **"Cor do texto:"**; `Segmented` ganhou prop `className` e usa `.borderSection`/`.borderSegmented` com `flex: 1` + `flex: 1 1 0` e `min-height: 38px` para simetria com os swatches. Ver `AGENTS.md` §2.15.
+> - **Testes**: 161 unitários; e2e 79 passed / 3 skipped (82 testes). Defeito "incrementar a tela antes de haver rascunhos" descartado nesta leva.
+>
 > **Revisão 10/11/2026 — release v3 "Meus rascunhos" + levas de correção 1, 2 e 3.**
 > Este documento descreve o desenho da implementação de base. O diagrama de fluxo e
 > a seção "Estrutura de Dados Principal" abaixo usam `localStorage` como destino do
@@ -324,7 +331,7 @@ LogoNode.tsx           Logo com duas variantes
 ImageNode.tsx          Imagem do usuário; marca data.userImageId para coleta no export
 SnapGuides.tsx         Linhas de snap visuais em tempo real (não exportadas)
 LayoutGuides.tsx       Guias de margem/centro/terços (não exportadas)
-TextureOverlays.tsx    Overlays de papel, textura de borda e granulado na camada superior
+TextureOverlays.tsx    Overlays de papel, craquelado e granulado na camada superior
 ```
 
 **Ciclo de renderização do `TextNode` com Efeito da Marca:**
@@ -342,7 +349,7 @@ TextureOverlays.tsx    Overlays de papel, textura de borda e granulado na camada
 | `ImageStep.tsx` | 2. Imagem | Seletor e drop zone, lista de `ImageEl`, card de remoção de fundo (inline) |
 | `TextStep.tsx` | 3. Texto | Botões de preset, sliders de fontSize/lineHeight/letterSpacing, swatches de cor, toggles de efeito/borda |
 | `LogoStep.tsx` | 4. Logo | Toggle variante, botões P/M/G, grid de 7 posições rápidas |
-| `TextureStep.tsx` | 5. Textura | 3 acordeões: papel, textura de borda, granulado — cada um com toggle + slider |
+| `TextureStep.tsx` | 5. Textura | 3 acordeões: papel, craquelado, granulado — cada um com toggle + slider |
 
 ### `src/components/`
 

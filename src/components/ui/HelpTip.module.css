@@ -62,6 +62,23 @@
   transition: opacity var(--duration-fast) ease, visibility var(--duration-fast) ease;
 }
 
+.ballooncenter {
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.balloonstart {
+  left: 0;
+  right: auto;
+  transform: none;
+}
+
+.balloonend {
+  left: auto;
+  right: 0;
+  transform: none;
+}
+
 .balloon::before {
   content: '';
   position: absolute;
@@ -73,6 +90,18 @@
   border-top: 2px solid var(--c-border);
   border-left: 2px solid var(--c-border);
   transform: translateX(-50%) rotate(45deg);
+}
+
+/* A seta acompanha o gatilho quando o balão não está centralizado. */
+.balloonstart::before {
+  left: 7px;
+  transform: rotate(45deg);
+}
+
+.balloonend::before {
+  left: auto;
+  right: 7px;
+  transform: rotate(45deg);
 }
 
 .open {

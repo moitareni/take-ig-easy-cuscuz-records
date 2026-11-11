@@ -6,11 +6,17 @@ export interface HelpTipProps {
   tip: string;
   /** Rótulo acessível do botão de ajuda. */
   label?: string;
+  /**
+   * Alinhamento do balão na horizontal. Em colunas estreitas, "start"/"end"
+   * mantêm o balão dentro do painel em vez de deixá-lo vazar pela borda.
+   */
+  align?: 'center' | 'start' | 'end';
 }
 
 export const HelpTip: React.FC<HelpTipProps> = ({
   tip,
   label = 'Mais informações',
+  align = 'center',
 }) => {
   const [open, setOpen] = useState(false);
   const tipId = useId();
@@ -82,7 +88,7 @@ export const HelpTip: React.FC<HelpTipProps> = ({
       <span
         id={tipId}
         role="tooltip"
-        className={`${styles.balloon} ${open ? styles.open : ''}`}
+        className={`${styles.balloon} ${styles[`balloon${align}`]} ${open ? styles.open : ''}`}
       >
         {tip}
       </span>

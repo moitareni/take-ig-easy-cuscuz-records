@@ -173,11 +173,7 @@ export const Header: React.FC<HeaderProps> = ({
 
         <div className={styles.controls}>
           {mode !== null && (
-            <ModeDropdown
-              value={mode}
-              format={activeFormat}
-              onChange={handleModeChange}
-            />
+            <ModeDropdown value={mode} onChange={handleModeChange} />
           )}
 
           {mode === 'carousel' ? (
@@ -206,8 +202,8 @@ export const Header: React.FC<HeaderProps> = ({
       <ConfirmDialog
         isOpen={showModeConfirm}
         title="Trocar pra Carrossel?"
-        message="Troco pra Carrossel e levo as imagens que você já enviou? Seu post vira o primeiro card 🎠"
-        confirmLabel="Bora, trocar!"
+        message="Seu post vira o primeiro card 🎠"
+        confirmLabel="Trocar!"
         cancelLabel="Ficar aqui"
         confirmVariant="primary"
         onConfirm={handleConfirmModeSwitch}

@@ -6,7 +6,6 @@ import {
   Download,
   Images,
   Pencil,
-  Plus,
   Sparkles,
   Trash2,
 } from 'lucide-react';
@@ -32,6 +31,7 @@ import { IconButton } from '../components/ui/IconButton';
 import { PreviewImage } from '../components/ui/PreviewImage';
 import { Segmented } from '../components/ui/Segmented';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import { CreateDraftDropdown, type CreateDraftKind } from '../components/CreateDraftDropdown';
 import { HomeDraftExporter } from '../components/HomeDraftExporter';
 import styles from './HomeScreen.module.css';
 
@@ -229,27 +229,18 @@ const DraftCard: React.FC<DraftCardProps> = ({
               {draft.title}
             </h3>
           )}
-          <button
-            type="button"
-            className={styles.renameIconBtn}
-            aria-label="Renomear"
-            title="Renomear"
-            onMouseDown={(event) => {
-              if (isEditingTitle) {
-                event.preventDefault();
-              }
-            }}
-            onClick={() => {
-              if (isEditingTitle) {
-                commitTitleEdit();
-              } else {
-                startEditingTitle();
-              }
-            }}
-            disabled={busy}
-          >
-            <Pencil size={15} strokeWidth={2.5} />
-          </button>
+          {!isEditingTitle && (
+            <button
+              type="button"
+              className={styles.renameIconBtn}
+              aria-label="Renomear"
+              title="Renomear"
+              onClick={startEditingTitle}
+              disabled={busy}
+            >
+              <Pencil size={15} strokeWidth={2.5} />
+            </button>
+          )}
         </div>
         <p className={styles.cardMeta}>
           {kindLabel(draft)} · {formatWhen(draft.updatedAt)}
@@ -342,6 +333,14 @@ export const HomeScreen: React.FC = () => {
     setCreatingCarousel(false);
   };
 
+  const handleCreate = (kind: CreateDraftKind) => {
+    if (kind === 'carousel') {
+      setCreatingCarousel(true);
+      return;
+    }
+    handleCreateSingle();
+  };
+
   const handleRenameDraft = async (draft: DraftMeta, newTitle: string) => {
     const clean = newTitle.replace(/\s+/g, ' ').trim();
     if (!clean || clean === draft.title) return;
@@ -403,26 +402,7 @@ export const HomeScreen: React.FC = () => {
           >
             {isBackingUp ? 'Montando backup...' : 'Baixar backup'}
           </Button>
-          {showHeaderCreate && (
-            <>
-              <Button
-                variant="secondary"
-                size="md"
-                icon={<Images size={18} strokeWidth={2.5} />}
-                onClick={() => setCreatingCarousel(true)}
-              >
-                Carrossel
-              </Button>
-              <Button
-                variant="primary"
-                size="md"
-                icon={<Plus size={18} strokeWidth={2.5} />}
-                onClick={handleCreateSingle}
-              >
-                Post único
-              </Button>
-            </>
-          )}
+          {showHeaderCreate && <CreateDraftDropdown onSelect={handleCreate} />}
         </div>
       </header>
 
@@ -504,12 +484,7 @@ export const HomeScreen: React.FC = () => {
                 contar uma história em vários slides.
               </p>
               <div className={styles.emptyActions}>
-                <Button variant="secondary" size="md" onClick={() => setCreatingCarousel(true)}>
-                  Criar carrossel
-                </Button>
-                <Button variant="primary" size="md" onClick={handleCreateSingle}>
-                  Criar post único
-                </Button>
+                <CreateDraftDropdown onSelect={handleCreate} centered />
               </div>
             </div>
           )}

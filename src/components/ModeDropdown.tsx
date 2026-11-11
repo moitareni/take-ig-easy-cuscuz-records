@@ -1,15 +1,11 @@
 import React, { useEffect, useId, useRef, useState } from 'react';
 import { ArrowLeftRight, Check, ChevronDown, Images, Sparkles } from 'lucide-react';
-import type { PostFormat } from '../brand/brand';
-import { FormatGlyph } from './ui/FormatGlyph';
 import styles from './ModeDropdown.module.css';
 
 export type ModeValue = 'single' | 'carousel';
 
 export interface ModeDropdownProps {
   value: ModeValue;
-  /** Formato ativo, usado só pelo glifo de proporção no gatilho. */
-  format: PostFormat;
   onChange: (value: ModeValue) => void;
 }
 
@@ -38,7 +34,7 @@ const OPTIONS: ModeOption[] = [
 const TOOLTIP =
   'Escolha entre Post único (uma arte) e Carrossel (várias artes). O que você já fez vai junto na troca.';
 
-export const ModeDropdown: React.FC<ModeDropdownProps> = ({ value, format, onChange }) => {
+export const ModeDropdown: React.FC<ModeDropdownProps> = ({ value, onChange }) => {
   const [open, setOpen] = useState(false);
   const listId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
@@ -131,9 +127,7 @@ export const ModeDropdown: React.FC<ModeDropdownProps> = ({ value, format, onCha
         onKeyDown={handleTriggerKeyDown}
       >
         <ArrowLeftRight size={15} strokeWidth={2.5} aria-hidden="true" />
-        <span className={styles.label} title={TOOLTIP}>modo</span>
-        <FormatGlyph format={format} size={13} />
-        <span className={styles.value}>{current.label}</span>
+        <span>Modo</span>
         <ChevronDown
           size={14}
           strokeWidth={2.5}

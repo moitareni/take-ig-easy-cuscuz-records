@@ -9,7 +9,7 @@ Este documento estabelece o contexto do negócio, regras inquebráveis de identi
 O **Cuscuz Records Insta Kit** é uma aplicação web estática criada sob medida para a gravadora independente **Cuscuz Records**.
 O objetivo é permitir que o cliente crie de forma prática, rápida e intuitiva posts para o feed do Instagram nos formatos **Vertical 3:4 (1080×1440)** (padrão), **Horizontal 4:3 (1440×1080)** e **Quadrado 1:1 (1080×1080)**, mantendo 100% de consistência com a identidade visual da marca. Também é possível criar **carrosséis** de até 10 slides, exportados em ZIP.
 
-> **Estado atual — release v3 "Meus rascunhos" (10/11/2026).** A aplicação é 100%
+> **Estado atual — release v3 "Meus rascunhos" (10/11/2026) + Leva 4 (11/11/2026).** A aplicação é 100%
 > estática, sem back-end, e **abre sempre na home "Meus rascunhos"**
 > (`src/screens/HomeScreen.tsx`); o editor só existe com um rascunho ativo. Todos os
 > posts — únicos ou carrosséis — são rascunhos persistidos em **IndexedDB**
@@ -19,6 +19,8 @@ O objetivo é permitir que o cliente crie de forma prática, rápida e intuitiva
 > `cuscuz-insta-kit:carrossel` são apenas migradas e mantidas como rollback. As specs
 > em `.kiro/specs/` registram a implementação de base e trazem, no topo de cada
 > arquivo, uma **Revisão** com o que prevalece. **Este `AGENTS.md` é a fonte de verdade.**
+> A **Leva 4** (11/11/2026) corrigiu a Textura, o log "Na folha", o rename da home e o
+> Passo 4; ver §2.8, §2.10, §2.14, §2.15, §2.16 e a Revisão no topo das specs.
 
 ### 1.1 Usuário-alvo e filosofia de experiência (visão do produto)
 
@@ -95,6 +97,7 @@ Quando o "Efeito da Marca" está ativo em títulos:
 - Implementado em Canvas sobrepondo a camada preenchida sobre a camada contornada com sombra, preservando os cantos internos da tipografia.
 
 ### 2.5 Bordas de Destaque
+- Na UI o rótulo é **"Caixa de destaque"** (antes "Borda de Destaque"), no card **Editar Texto** do Passo 4.
 - **Borda 1 (Amarela)**: offset retangular contornando o texto na cor `#f8ce2b`, com a textura `textura-borda` recortada nos limites da borda e aplicada no modo de mesclagem `soft-light` ("luz indireta") com 100% de opacidade.
 - **Borda 2 (Barro)**: mesmo offset na cor `#942911`, com a textura no modo `soft-light` e 44% de opacidade.
 
@@ -118,13 +121,13 @@ Quando o "Efeito da Marca" está ativo em títulos:
 ### 2.8 Textura Final (opcional, desligada por padrão)
 - Etapa **6. Textura** com três acabamentos independentes:
   - **Papel amassado**: overlay da textura `TEXTURE/` (`public/brand/papel-textura.webp`) sobre a folha, com opacidade regulável (sugestão: 40%).
-  - **Textura de borda**: overlay da textura `BORDER/TEXTURA-BORDA.png` (`public/brand/textura-borda.webp`) sobre a folha, com opacidade regulável (sugestão: 40%).
+  - **Craquelado**: overlay da textura `BORDER/TEXTURA-BORDA.png` (`public/brand/textura-borda.webp`) sobre a folha, com opacidade regulável (sugestão: 40%).
   - **Granulado**: grão monocromático com distribuição gaussiana, gerado por RNG **com seed** (`mulberry32`) para o grão ficar **idêntico no preview e no export**.
 - Todos vêm com checagem desligada; nunca devem ser aplicados automaticamente na criação de um post (`FINISH_ENABLED_DEFAULT = false`). Isso continua valendo com o botão **"Ativar todas"** — ele é uma ação **explícita** da usuária.
-- **"Ativar todas"** (Leva 2): `enableAllFinishes()` em `editorStore.ts` liga os três em **um único `set`** (= um único passo de undo), preservando opacidades/intensidade; quando os três já estão ligados o **mesmo botão vira "Desativar todas"** (Leva 3), que chama `disableAllFinishes()` — também um único `set`/passo de undo, preservando os valores. `resetFinish()` continua como "Restaurar padrão" (desliga e também zera os valores). No carrossel, `finish` é por slide e o subscriber de `main.tsx` sincroniza só o Slide Ativo.
-- **Cartões compactos de acabamento** (Leva 3, `TextureStep.tsx` + `TextureStep.module.css`): cada acabamento (Papel amassado, Textura de borda, Granulado) é um cartão **sem texto explicativo**, com o nome e um **checkbox do tema** (`components/ui/Checkbox.tsx`, quadrado "adesivo" amarelo quando marcado, `<input type="checkbox">` real) no canto superior direito. **Clicar em qualquer parte do cartão liga/desliga**; a área de ajustes (sliders, tamanho do grão) e o botão de prévia não alternam (`stopPropagation`). Opacidade/intensidade mantêm o comportamento (mexer no controle liga o acabamento). Os botões "Ligado/Desligado" foram removidos.
+- **"Ativar todas"** (Leva 2): `enableAllFinishes()` em `editorStore.ts` liga os três em **um único `set`** (= um único passo de undo), preservando opacidades/intensidade; quando os três já estão ligados o **mesmo botão vira "Desativar todas"** (Leva 3), que chama `disableAllFinishes()` — também um único `set`/passo de undo, preservando os valores. **Leva 4**: o botão **"Restaurar padrão"** e a action `resetFinish()` foram **removidos** (não havia mais ponto de entrada e zera valores que "Desativar todas" preserva); hoje esses dois botões são o **único** caminho para ligar/desligar os três de uma vez. No carrossel, `finish` é por slide e o subscriber de `main.tsx` sincroniza só o Slide Ativo.
+- **Cartões compactos de acabamento** (Leva 3, `TextureStep.tsx` + `TextureStep.module.css`): cada acabamento (Papel amassado, Craquelado, Granulado) é um cartão **sem texto explicativo**, com o nome e um **checkbox do tema** (`components/ui/Checkbox.tsx`, quadrado "adesivo" amarelo quando marcado, `<input type="checkbox">` real) no canto superior direito. **Clicar em qualquer parte do cartão liga/desliga**; a área de ajustes (sliders, tamanho do grão) e o botão de prévia não alternam (`stopPropagation`). Opacidade/intensidade mantêm o comportamento (mexer no controle liga o acabamento). Os botões "Ligado/Desligado" foram removidos.
 - **Prévia da textura** (Leva 3): botão "Prévia da textura" (não mais `<details>`) no cabeçalho do cartão de papel e de borda; fica **invisível (`opacity: 0`) e só aparece no hover do cartão**, no foco do teclado, quando aberto e sempre em telas de toque (`@media (hover: none)`). O `PreviewImage` só é montado quando aberto. Granulado não tem imagem, logo não tem botão.
-- **Contrato de teste**: checkboxes com nome acessível `Papel amassado`, `Textura de borda`, `Granulado`; botões `Ativar todas` / `Desativar todas`; `Prévia da textura` — `e2e/flow.spec.ts` e `e2e/regressoes.spec.ts` dependem deles. (Os antigos rótulos `Papel (Desligado|Ligado)` etc. não existem mais.)
+- **Contrato de teste**: checkboxes com nome acessível `Papel amassado`, `Craquelado`, `Granulado`; botões `Ativar todas` / `Desativar todas`; `Prévia da textura` — `e2e/flow.spec.ts` e `e2e/regressoes.spec.ts` dependem deles. (Os antigos rótulos `Papel (Desligado|Ligado)` etc. não existem mais.)
 
 ### 2.9 Imagens do Usuário (etapa 3, opcional)
 - **Limite total: até `IMAGE_MAX_COUNT` (5) imagens por post**, contando duplicatas; a 6ª é bloqueada com toast amigável.
@@ -136,7 +139,8 @@ Quando o "Efeito da Marca" está ativo em títulos:
 
 ### 2.10 Remoção de fundo (etapa 3, opcional)
 - **Sempre explícita, nunca automática** (mesma regra das texturas): botão "Remover fundo" no
-  card da imagem selecionada + tesourinha em cada linha da lista. Dois modos calibrados —
+  card da imagem selecionada — **ponto de entrada único** (a tesourinha da lista "Na folha" foi
+  removida; a lista só seleciona e exclui). Dois modos calibrados —
   **Pessoa** (alpha suave p/ cabelo + decontamination de cor nas bordas) e **Objeto**
   (máscara firme: median + curva estreita + erosão) — presets em `src/lib/bgRemoval.ts`.
 - **100% client-side** (fotos nunca saem do navegador): BiRefNet_lite re-exportado a 512²
@@ -155,6 +159,32 @@ Quando o "Efeito da Marca" está ativo em títulos:
   desativa e entra o botão **"Cancelar"** (invalida o fluxo via época; o download da
   ferramenta continua em background p/ acelerar a próxima). Uma inferência por vez; último
   modo lembrado em `localStorage`.
+- **Quadro de recorte enxuto** (Leva 3): o título do passo de escolha é a pergunta
+  **"O que há na imagem para recortar?"** (a linha "Escolha o tipo de recorte pra …" saiu) e
+  os dois modos ficam **um ao lado do outro** (`.modeGrid` em grid de 2 colunas; cartão na
+  vertical: ícone em cima, nome embaixo). A **explicação de cada modo não fica mais solta no
+  cartão**: vive no balão do **(?)** (`HelpTip`, `aria-label="Como funciona
+  o modo {Pessoa|Objeto}"`), que abre em hover, foco e toque. O `(?)` fica **fora** do botão do
+  modo, para o nome acessível continuar limpo ("Pessoa"/"Objeto"). Os textos dos modos **não
+  usam travessão**. Alinhamento do balão: `center` em todos os cartões e `end` no último — o
+  balão fica sempre montado no DOM, então posição errada geraria rolagem horizontal no painel
+  (regressão verificada em mobile).
+  **Empilhamento**: o "levante" do hover (`translateY(-1px)`) fica no `.modeHit`, **nunca no
+  `.modeCard`** — um `transform` no cartão criaria contexto de empilhamento e prenderia o balão
+  dentro dele, deixando o cartão vizinho (depois na árvore) cobri-lo.
+- **Nota de primeira vez**: leva um **selo "!"** amarelo no canto (`.noteWarn`) no lugar do
+  emoji de milho — é aviso de download grande, não comemoração.
+- **Card "Imagem Selecionada" enxuto** (Leva 3): o card mostra **só o nome da imagem e dois
+  botões lado a lado** — **"Trocar imagem"** e **"Remover fundo"** (que vira **"Reverter
+  fundo"** quando há `cutFrom`, porque aí não faz sentido recortar de novo). Quando há
+  `cutFrom`, "Remover fundo" dá lugar a "Reverter fundo" — os dois não aparecem juntos.
+  Espelhar ↔/↕, trazer/enviar entre camadas e excluir **saíram do card**: moram só no dock
+  direito (`AlignToolbar`: "Espelhar horizontalmente/verticalmente", "Trazer para frente",
+  "Enviar para trás", "Excluir (Delete)"). Regra: **um caminho só por ação** — o que está no
+  dock não se repete no painel. **Leva 4**: as linhas da lista "Na folha" usam o componente
+  `ElementListRow` — a **caixa inteira é clicável** para selecionar e a lixeira, irmã do botão,
+  só exclui (sem selecionar junto); Imagens mantêm miniatura + nome, sem numeração nem ponto.
+  Ver §2.15.
 
 ### 2.11 Seleção múltipla (Ctrl/Cmd/Shift + clique)
 - **Seleção conjunta**: o usuário pode segurar `Ctrl`, `Cmd` (Mac) ou `Shift` e clicar em múltiplos elementos na folha para selecioná-los juntos.
@@ -170,9 +200,10 @@ Quando o "Efeito da Marca" está ativo em títulos:
 - **Persistência** (`src/lib/drafts/`): banco IndexedDB `cuscuz-insta-kit` com stores `drafts` (`DraftMeta`), `documents` (`DraftBody`), `covers` (blob WebP), `meta` (marcador de migração) e `images`. `DRAFT_SCHEMA_VERSION = 2`. `DraftBody` é `SingleDraftBody { doc, finish }` ou `CarouselDraftBody { slides, activeSlideIndex, format }`. `DraftMeta` traz `title`, `titleSource: 'auto' | 'user'`, `kind`, `format`, `slideCount`, datas.
 - **Autosave** (`session.ts`): `markDraftDirty()` → `scheduleSave(450ms)` → `persistIfDirty()` → `saveDraftRecord()` (transação nos dois stores) → `updateActiveMeta` + `setSaveState('saved')` + `broadcastDraftsChanged()` + `ensureCover()`. `flushSession()` roda em `visibilitychange`/`pagehide`/`beforeunload`. Uma única `saveChain` serializa os saves; `navigator.locks` impede duas abas editando o mesmo rascunho; `BroadcastChannel('cuscuz-insta-kit:drafts')` mantém a home sincronizada.
 - **Capas** (`cover.ts`): `captureAndSaveCover()` e `ensureCover()` (primeira capa). O provedor em `EditorScreen.tsx` esconde Transformer/guias para capturar e **restaura seleção, edição e guias sem tocar em `step`**. `useDraftCovers` converte blobs em object URLs e os revoga na troca de lista.
-- **Home**: card "Continuar de onde parou" (último aberto), grade com capa/selo/título/ações, estado vazio orientante, renomear/duplicar/excluir com "Desfazer", "Baixar backup" (ZIP) e aviso de cota. **Sem rascunhos**, os botões de criação ficam **somente no quadro** (`showHeaderCreate = drafts.length > 0 || listStatus !== 'ready'`); com rascunhos, ficam no header. O título da seção tem o balão `HelpTip` (`(?)`) em vez de descrição permanente.
+- **Home**: card "Continuar de onde parou" (último aberto), grade com capa/selo/título/ações, estado vazio orientante, renomear/duplicar/excluir com "Desfazer", "Baixar backup" (ZIP) e aviso de cota. A criação fica num **único botão `+ Criar novo`** (`components/CreateDraftDropdown.tsx`, `data-testid="create-draft-trigger"`), com as duas opções do `ModeDropdown` do editor ("Post único" / "Carrossel", mesmos ícones `Sparkles`/`Images` e as mesmas dicas). **Sem rascunhos**, o `+ Criar novo` fica **somente no quadro central** (`showHeaderCreate = drafts.length > 0 || listStatus !== 'ready'`); com rascunhos, fica no header. O título da seção tem o balão `HelpTip` (`(?)`) em vez de descrição permanente.
 - **Migração**: `migrateLegacyDrafts()` lê as chaves `localStorage` antigas, copia o JSON cru para `meta` (rollback) e grava os registros; é idempotente e **nunca apaga** as chaves legadas nesta versão.
 - **Reconciliação/GC**: união dos `imageId`s de todos os rascunhos e slides; `reconcileBodyImages` remove elementos fantasmas e `collectGarbageImages` apaga blobs órfãos.
+- **Pendência registrada (11/11/2026, fora da Leva 4)**: o item "incrementar a tela antes de haver rascunhos" foi **descartado** a pedido do Reni e será detalhado em outra oportunidade. Nenhuma alteração de boot/home foi feita por conta dele: `screen === 'boot'` segue com o `<div>` de 100vh em `App.tsx` e `showHeaderCreate` segue como está. Não antecipar uma interpretação sem o detalhamento.
 
 ### 2.13 Modo Carrossel
 
@@ -189,28 +220,33 @@ Quando o "Efeito da Marca" está ativo em títulos:
 - `shortcuts.ts` já ignora `INPUT`/`TEXTAREA`/`contentEditable` — digitar no nome não apaga elementos nem move a seleção. `Header.module.css` define `.titleInput` com `user-select: text` (o `body` tem `user-select: none`).
 - **Renomear "sem salto" (Leva 3)**: ao entrar em edição, o título **permanece exatamente como estava** — a única mudança é a "pílula" creme (`--c-creme`) em volta, **sem borda, sem outline e sem empurrar nada**. O `<input>` fica em um `inline-grid` com um `.titleGhost` (`opacity: 0`, **não** `visibility: hidden`, que colapsa a largura em Chromium) que espelha o texto e dimensiona o campo; só cresce ao digitar (empurrando o selo `Salvo`, nunca no clique). Há limite de **80 caracteres** (`maxLength`) e `max-width: min(340px, 100%)` (inclusive no mobile, onde `60vw` fazia o `<h1>` cobrir o selo `Salvo`). O texto é **todo selecionado ao focar**.
 - **Mesmo comportamento no card da home** (`HomeScreen.tsx`): clicar no título **ou** no botão `Renomear` (lápis) abre a mesma pílula inline (`.cardTitleGhost`). Não existe mais campo com borda verde. O card ganhou o botão direto **`Exportar`** (`HomeDraftExporter.tsx`, exporta PNG/ZIP sem abrir o editor), ao lado de Duplicar e Excluir.
+- **Lápis some durante a edição (Leva 4)**: no card da home, o botão `Renomear` é renderizado só com `!isEditingTitle` — some ao clicar no lápis **ou** no nome e **só volta** quando o nome é confirmado (Enter/blur) ou cancelado (Escape). O `onMouseDown` + commit-duplo do lápis saíram; `.cardTitleEditWrapper` usa `max-width: 100%` (antes reservava 34 px para o ícone). Ver `e2e/rascunhos.spec.ts`.
 - **Cor de seleção da marca**: `::selection` e `::-moz-selection` em `global.css` usam o **amarelo da marca** (`--c-amarelo`, `#f8ce2b`) com texto `--c-preto`; o mesmo vale para o realce de seleção em `ThumbGrid` e `EditorCanvas`. Nada de azul padrão do navegador.
 - **Layout do Header e Dock**:
   - À esquerda no Header: botão Voltar, título editável + subtítulo (`FormatGlyph` + formato) e, logo ao lado, o **selo de autosave** (`Salvo` / `Salvando...` / `Alterações...`).
   - À direita no Header: `ModeDropdown` seguido da ação de exportação (`Exportar` em post único ou dropdown `Exportação` no carrossel). O antigo botão `"Começar do zero"` foi removido do Header.
+  - **Gatilho do `ModeDropdown`** (Leva 3): segue o **mesmo modelo do `+ Criar novo`** (`CreateDraftDropdown`) — ícone `ArrowLeftRight` (15px, stroke 2.5) + rótulo **"Modo"** em `Londrina Solid` 900 + `ChevronDown` que gira ao abrir. O tamanho é o do `Exportar`/`Exportação` (`Button size="sm"`: `padding: 6px 12px`, `font-size: 16px`, borda 2px, `--radius-sm`, `--shadow-md`, `gap: 8px`), para os dois terem o mesmo peso visual no header. Diferença: o fundo é **creme** (`--c-creme`), não amarelo — o amarelo fica reservado para a ação primária de exportar. O gatilho **não mostra mais o modo atual nem o glifo de formato** (a prop `format` saiu de `ModeDropdownProps`; o formato continua como leitura no subtítulo do Header). Como o modo ativo não é visível, o `aria-label` do botão o informa (`Modo: {Post único|Carrossel}. Abrir lista de modos`). Hover/aberto usam `--c-surface-muted` (nunca amarelo) e o menu ganhou a animação `modeMenuPop`.
   - No Dock lateral direito (`EditorScreen.tsx`): `ZoomControls`, `BackgroundMirrorToolbar`, `AlignToolbar`, `GuideToolbar` e, na base (onde antes ficava o botão de download), o grupo de **Desfazer / Refazer (Undo / Redo)**.
 
 ### 2.15 Componentes de UI e convenções visuais
 
 - **`PreviewImage`** (`components/ui/`): toda prévia de imagem passa por ele. Estados `empty/loading/loaded/error` escopados por `src`; `<img>` nasce com `opacity: 0` e só aparece no `onLoad` — **nunca** exibir `alt` cru nem ícone de imagem quebrada. Variantes `compact` (só o anel, dimensionado pelo container) e `full` (selo adesivo com anel + "Carregando prévia..."). Spinner: borda 3 px preta com arcos amarelo/barro, `0.9s linear infinite` (`--duration-loading`), **`1.6s` com `prefers-reduced-motion`** (giro é feedback essencial; o restante do app respeita a regra global). Fundo creme com pontilhado barro, estático.
-- **`HelpTip`**: balão `(?)` com `role="tooltip"`, `aria-describedby`, `aria-expanded`; abre em hover, foco e toque; fecha em `Escape`, `blur` e clique fora. Usado no título "Meus rascunhos".
+- **`HelpTip`**: balão `(?)` com `role="tooltip"`, `aria-describedby`, `aria-expanded`; abre em hover, foco e toque; fecha em `Escape`, `blur` e clique fora. Props: `tip`, `label` e `align` (`'center'` padrão, `'start'`, `'end'` — a seta acompanha o gatilho). Usado no título "Meus rascunhos" e nos modos de recorte de fundo.
 - **`BackgroundMirrorToolbar`**: reusa `AlignToolbar.module.css`; dois `IconButton` com `active` no dock direito, contextual (Passo 1 + fundo + sem seleção).
 - **Scrollbars**: `global.css` aplica `scrollbar-color: var(--c-amarelo-quente) var(--c-surface-muted)` e `scrollbar-width: thin` em `html`, mantém `::-webkit-scrollbar*` (inclusive `:active` e `-corner`) e `summary:focus-visible` no seletor de foco. `scrollbar-gutter: stable` permanece nos containers de rolagem. Em macOS com overlay scrollbars o sistema pode ignorar a estilização.
 - **`Checkbox`** (`components/ui/`): checkbox do tema usado nos cartões de textura.
+- **`ElementListRow`** (`components/ui/ElementListRow.tsx` + `.module.css`, **Leva 4**): componente único do log "Na folha" dos Passos 2 (Enfeites), 3 (Imagens) e 4 (Textos). Um `<button>` com `aria-label="Selecionar …"` e `aria-pressed` **ocupa a caixa retangular inteira** (`padding-right` reserva a lixeira); a lixeira é um `<span>` **irmão** posicionado à direita, então **excluir nunca seleciona**. Props: `label`, `selectLabel`, `removeLabel`, `selected`, `onSelect`, `onRemove`, `leading?` (miniatura via `PreviewImage`, usada só em Imagens), `bullet?` (ponto de lista personalizado — `true` em Enfeites/Textos, no lugar da numeração `"1. …"`; `false` em Imagens), `title?`. Fundo amarelo quando selecionado; `:focus-visible` verde. As listas usam `.elementList` (`StepPanel.module.css`); `ImageStep.module.css` não tem mais `.row*`/`.rowLabel`.
+- **Passo 4 · Editar Texto** (`steps/TextStep.tsx`): os botões de criação são **`+ Título`**, **`+ Texto`** e **`+ Texto com borda`** — rótulos curtos, **sem detalhes entre parênteses** (a fonte e o efeito são aplicados pela interface, não precisam ser ensinados à usuária leiga). O terceiro é o estilo `highlight`, que nasce com o Efeito da Marca ligado. O antigo botão **"Efeito da Marca" saiu do painel**. O card usa `.editStack` (gap 16 px) para dar respiro vertical. **Leva 4**: os três botões ficam **lado a lado** em `.buttonGrid3` (3 colunas, `Button size="sm"` com `.addTextButton`: ícone em cima, nome embaixo, `white-space: normal`); **"Cor da Marca" virou "Cor do texto"** (rótulo em `ColorSwatches.tsx`); **"Cor do texto"** (swatches em 2 colunas) e **"Caixa de destaque"** (Nenhuma/Amarela/Barro empilhadas com `Segmented direction="column"`) ficam **lado a lado** em `.dualColumn` (2 colunas, gap 14 px) com **`align-items: stretch`** — `Segmented` ganhou a prop `className` e usa `.borderSection`/`.borderSegmented` (`flex: 1` + segmentos `flex: 1 1 0` com `min-height: 38px`), de modo que **cada caixinha tem a altura de um swatch** e os dois blocos ficam simétricos.
+- **`Toast`** (`components/Toast.tsx`): balão de aviso com `role="alert"` usado por todas as telas. Tem **barra de tempo amarela** no topo (`.timer`, `scaleX` da esquerda para a direita) preenchendo durante `duration` (4 s; 8 s quando há ação). Ao completar, o balão **sempre esmaece em 1,2 s** (rAF, não CSS) e só então é dispensado. Passar o mouse durante o esmaecimento, antes de a opacidade chegar a 5%, **zera o esmaecimento** e segura o balão em 100% enquanto o ponteiro estiver em cima; ao sair, ele volta a esmaecer do zero. Hover durante a contagem **não** pausa a barra — só o esmaecimento é resgatável. O X e uma ação (`Desfazer`) continuam dispensando na hora.
 - **Scrollbar fina e arredondada em todos os navegadores** (Leva 3): 6 px com pontas redondas; no Firefox, onde o CSS não arredonda a barra nativa, `FirefoxRoundScrollbar.tsx` desenha uma barra própria sobre os containers de rolagem.
 - **Ajuda no contexto**: descrições longas viram balão, não texto permanente. Microcopy em PT-BR, calorosa, sem diminutivos nos títulos das etapas.
 
 ### 2.16 Testes e verificação
 
-- `npm run typecheck` · `npm run test` (Vitest + jsdom, **161 testes** em 15 arquivos) · `npm run build` · `npm run e2e` (**69 passed / 3 skipped**, 72 testes em desktop + mobile).
+- `npm run typecheck` · `npm run test` (Vitest + jsdom, **161 testes** em 15 arquivos) · `npm run build` · `npm run e2e` (**79 passed / 3 skipped**, 82 testes em desktop + mobile — Leva 4).
 - **Obrigatório rodar `npm run build` antes de `npm run e2e`**: `playwright.config.ts` serve `dist/` na porta 4173 via `npm run preview`. Sem rebuild, os e2e testam código velho.
-- Suíte e2e: `flow`, `format`, `image`, `multiselect`, `rascunhos`, `momento-zero`, `regressoes` (regressões das duas levas) + `helpers.ts`. `CREATE_SINGLE = /^(Post único|Criar post único)$/` e `CREATE_CAROUSEL = /^(Carrossel|Criar carrossel)$/` centralizam os dois estados da home; `waitForHome()` é independente da contagem de rascunhos.
-- **Contratos de seletor a preservar**: `Papel/Borda/Grain (Desligado|Ligado)`, "Corte vertical", "Topo"/"Centro"/"Base", "Slide 1 de 1" (duas ocorrências no carrossel), "Espelhar fundo ↔/↕" no fundo e "Espelhar ↔/↕" nos cards de imagem/enfeite, `mode-dropdown-trigger`, `slide-badge`, `export-dropdown-trigger`, `canvas-busy-overlay`.
+- Suíte e2e: `flow`, `format`, `image`, `multiselect`, `rascunhos`, `momento-zero`, `regressoes` (regressões das levas 1 a 4, com 3 testes novos da Leva 4) + `helpers.ts`. `openCreateMenu()` / `createSingle()` / `pickCarousel()` / `createCarousel()` centralizam a criação pela home (o gatilho `+ Criar novo` é o mesmo no header e no quadro vazio); `CREATE_SINGLE = /Post único/` e `CREATE_CAROUSEL = /Carrossel/` casam o nome acessível do item de menu, que inclui a dica ("Post único Uma arte só"); `waitForHome()` é independente da contagem de rascunhos.
+- **Contratos de seletor a preservar**: `Papel/Borda/Grain (Desligado|Ligado)`, "Corte vertical", "Topo"/"Centro"/"Base", "Slide 1 de 1" (duas ocorrências no carrossel), "Espelhar fundo ↔/↕" no fundo e "Espelhar ↔/↕" nos cards de **enfeite** (em imagem, só no dock: "Espelhar horizontalmente"/"Espelhar verticalmente"), `create-draft-trigger` (home), `mode-dropdown-trigger`, `slide-badge`, `export-dropdown-trigger`, `canvas-busy-overlay`, "Trocar imagem" / "Remover fundo" / "Reverter fundo" no card da imagem, "+ Título" / "+ Texto" / "+ Texto com borda" no Passo 4 (sem parênteses), **"Cor do texto:"**, `Selecionar {elemento}` / `Remover` / `Remover imagem` no log "Na folha", `Renomear` no card da home. **Removidos na Leva 4**: "Restaurar padrão" e "Cor da Marca" (não devem voltar; `e2e/regressoes.spec.ts` afirma a ausência de ambos).
 
 ### 2.17 Feedback de carregamento (Leva 3)
 
@@ -242,12 +278,12 @@ post-generator/                  # Raiz com os assets originais (NÃO editar dir
     ├── vercel.json · public/_headers   # Cache /assets (1 ano) e /brand (7 dias)
     ├── scripts/build-assets.mjs # Otimização lossless + DECOR_OVERRIDES + manifest
     ├── .kiro/specs/            # cuscuz-insta-kit/ e carousel-posts/ (com Revisão no topo)
-    ├── tmp/                    # relacao_de_problema.md · PLANO-UX.md · PLANO-LEVA-2.md
+    ├── tmp/                    # PLANO-UX.md
     ├── e2e/
-    │   ├── helpers.ts          # CREATE_SINGLE / CREATE_CAROUSEL / waitForHome / snapshots
+    │   ├── helpers.ts          # openCreateMenu / createSingle / createCarousel / waitForHome / snapshots
     │   ├── flow.spec.ts · format.spec.ts · image.spec.ts · multiselect.spec.ts
     │   ├── rascunhos.spec.ts · momento-zero.spec.ts
-    │   └── regressoes.spec.ts  # Regressões das levas 1 e 2
+    │   └── regressoes.spec.ts  # Regressões das levas 1 a 4
     ├── public/brand/           # Assets WebP gerados (+ thumbs/)
     └── src/
         ├── App.tsx · main.tsx · types.ts · assets.ts · assets-manifest.json
@@ -261,11 +297,12 @@ post-generator/                  # Raiz com os assets originais (NÃO editar dir
         │                       # fonts · grain · shortcuts · storage · useImage · zoom
         ├── canvas/             # EditorCanvas · Nodes · hooks (useSlideThumb, useCanvasFitWidth…)
         ├── components/
-        │   ├── Header · Stepper · StepFooter · Toast · ConfirmDialog · ModeDropdown
+        │   ├── Header · Stepper · StepFooter · Toast · ConfirmDialog · ModeDropdown · CreateDraftDropdown
         │   ├── ZoomControls · GuideToolbar · AlignToolbar · BackgroundMirrorToolbar
         │   ├── carousel/       # SlideTray · SlideThumb · SlidePickerDialog
-        │   └── ui/             # Button · IconButton · Card · Slider · Segmented
+        │   └── ui/             # Button · IconButton · Card · Slider · Segmented · Checkbox
         │                       # ColorSwatches · ThumbGrid · FormatGlyph · PreviewImage · HelpTip
+        │                       # ElementListRow (Leva 4: log "Na folha")
         └── steps/              # BackgroundStep · DecorationStep · ImageStep
                                 # TextStep · LogoStep · TextureStep
 ```

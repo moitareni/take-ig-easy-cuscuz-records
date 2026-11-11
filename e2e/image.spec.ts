@@ -28,16 +28,16 @@ test.describe('Etapa 3 - Imagens do usuário', () => {
     // A imagem entra selecionada e o card de opções aparece
     await expect(page.getByText('Imagem Selecionada')).toBeVisible();
 
-    // Espelha horizontal e verticalmente (estado dos botões: regra do DecorationNode-style flip)
-    await page.locator('button:has-text("Espelhar ↔")').click();
-    await page.locator('button:has-text("Espelhar ↕")').click();
+    // Espelha horizontal e verticalmente pelo dock direito (AlignToolbar)
+    await page.getByRole('button', { name: 'Espelhar horizontalmente' }).click();
+    await page.getByRole('button', { name: 'Espelhar verticalmente' }).click();
 
     // A gravação no histórico de undo agrupa mudanças a cada ~400ms:
     // espera a janela passar para que remover/voltar enregistre states distintos.
     await page.waitForTimeout(450);
 
     // Remove e volta com undo (sem imagens a lista nem é renderizada)
-    await page.getByRole('button', { name: 'Remover imagem selecionada' }).click();
+    await page.getByRole('button', { name: 'Excluir (Delete)' }).click();
     await expect(page.locator('text=Na folha (1/5)')).toHaveCount(0);
     await page.waitForTimeout(450);
     await page.keyboard.press('Control+z');
@@ -47,9 +47,9 @@ test.describe('Etapa 3 - Imagens do usuário', () => {
     await page.locator('button[title="foto"]').click();
     await expect(page.getByText('Imagem Selecionada')).toBeVisible();
 
-    // Reordena camadas sem erro
-    await page.locator('button:has-text("Trazer pra frente")').click();
-    await page.locator('button:has-text("Enviar pra trás")').click();
+    // Reordena camadas sem erro (dock direito)
+    await page.getByRole('button', { name: 'Trazer para frente' }).click();
+    await page.getByRole('button', { name: 'Enviar para trás' }).click();
 
     // Enche a folha até o limite de 5
     for (let i = 2; i <= 5; i++) {
@@ -123,14 +123,15 @@ test.describe('Etapa 3 - Imagens do usuário', () => {
     // Botão do card abre o quadro — que nasce NO LUGAR do botão
     await page.getByRole('button', { name: 'Remover fundo', exact: true }).click();
     const panel = page.getByRole('group', { name: 'Remover fundo' });
-    await expect(panel).toContainText('Escolha o tipo de recorte pra “foto”');
-    await expect(page.getByRole('button', { name: 'Pessoa' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Objeto' })).toBeVisible();
+    await expect(panel).toContainText('O que há na imagem para recortar?');
+    await expect(page.getByRole('button', { name: 'Pessoa', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Objeto', exact: true })).toBeVisible();
     // O quadro substituiu o botão dentro do card
     await expect(page.getByRole('button', { name: 'Remover fundo', exact: true })).toHaveCount(0);
 
-    // Nota da primeira vez (modelo ainda não baixado)
+    // Nota da primeira vez (modelo ainda não baixado), com "!" no lugar do emoji
     await expect(panel).toContainText('uma vez só e guardamos no navegador');
+    await expect(panel).not.toContainText('🌽');
 
     // Clicar na folha deseleciona a imagem, mas o quadro NÃO fecha: só o X fecha.
     // (A folha são N canvas de layers Konva empilhados; a de baixo não recebe
@@ -147,13 +148,92 @@ test.describe('Etapa 3 - Imagens do usuário', () => {
     await page.getByRole('button', { name: 'Fechar' }).click();
     await expect(panel).toHaveCount(0);
 
-    // Tesourinha da lista reabre o quadro no slot; X fecha
-    await page.getByRole('button', { name: 'Remover fundo de foto' }).click();
-    await expect(panel).toContainText('Escolha o tipo de recorte');
+    // A lista não tem mais tesourinha: selecionar na lista e recortar pelo card
+    await page.locator('button[title="foto"]').click();
+    await page.getByRole('button', { name: 'Remover fundo', exact: true }).click();
+    await expect(panel).toContainText('O que há na imagem para recortar?');
     await page.getByRole('button', { name: 'Fechar' }).click();
     await expect(panel).toHaveCount(0);
 
     // Nenhum tipo escolhido: nada do modelo passou pela rede
     expect(hfRequests).toEqual([]);
+  });
+
+  test('card da imagem fica enxuto: só Trocar imagem e Remover fundo', async ({ page }) => {
+    await page.goto('/');
+    await startEditor(page);
+    await page.locator('button[title*="Pronto 1"]').first().click();
+    await page.locator('footer button:has-text("Próximo")').click();
+    await page.locator('footer button:has-text("Pular (sem enfeites)")').click();
+    await expect(page.locator('h2')).toContainText('3. Sua imagem');
+
+    await page.locator('input[type="file"]').first().setInputFiles(FIXTURE);
+    await expect(page.getByText('Imagem Selecionada')).toBeVisible();
+
+    // Sobraram só os dois botões, lado a lado
+    await expect(page.getByRole('button', { name: 'Trocar imagem' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Remover fundo', exact: true })).toBeVisible();
+
+    // O que era duplicado do dock direito saiu do card
+    await expect(page.getByRole('button', { name: 'Espelhar ↔' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Espelhar ↕' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Trazer pra frente' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Enviar pra trás' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Remover imagem selecionada' })).toHaveCount(0);
+
+    // A tesourinha da lista "Na folha" também foi
+    await expect(page.getByRole('button', { name: /^Remover fundo de / })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Remover imagem' })).toBeVisible();
+  });
+
+  test('modos de recorte lado a lado, com explicação no (i) e sem travessão', async ({ page }) => {
+    await page.goto('/');
+    await startEditor(page);
+    await page.locator('button[title*="Pronto 1"]').first().click();
+    await page.locator('footer button:has-text("Próximo")').click();
+    await page.locator('footer button:has-text("Pular (sem enfeites)")').click();
+    await expect(page.locator('h2')).toContainText('3. Sua imagem');
+
+    await page.locator('input[type="file"]').first().setInputFiles(FIXTURE);
+    await page.getByRole('button', { name: 'Remover fundo', exact: true }).click();
+    const panel = page.getByRole('group', { name: 'Remover fundo' });
+
+    // Um ao lado do outro: mesma linha, colunas diferentes
+    const pessoa = await page.getByRole('button', { name: 'Pessoa', exact: true }).boundingBox();
+    const objeto = await page.getByRole('button', { name: 'Objeto', exact: true }).boundingBox();
+    expect(pessoa!.y).toBeCloseTo(objeto!.y, 0);
+    expect(objeto!.x).toBeGreaterThan(pessoa!.x + pessoa!.width - 1);
+
+    // A explicação não fica solta no cartão: o balão começa escondido
+    await expect(page.getByRole('tooltip')).not.toBeVisible();
+    const infoPessoa = page.getByRole('button', { name: 'Como funciona o modo Pessoa' });
+    const infoObjeto = page.getByRole('button', { name: 'Como funciona o modo Objeto' });
+    await expect(infoPessoa).toContainText('?');
+    await expect(infoObjeto).toContainText('?');
+
+    // O balão abre no hover, fica POR CIMA do cartão vizinho e some na saída
+    await infoPessoa.hover();
+    const tip = page.getByRole('tooltip');
+    await expect(tip).toBeVisible();
+    await expect(tip).toContainText('Pra retratos e figuras, com cabelo e detalhes suaves preservados');
+
+    // Regressão de empilhamento: o cartão "Objeto" não pode cobrir o balão.
+    const balaoNoTopo = await page.evaluate(() => {
+      const balao = document.querySelector('[role="tooltip"]');
+      if (!balao) return false;
+      const r = balao.getBoundingClientRect();
+      const x = r.left + r.width * 0.75;
+      const y = r.top + r.height * 0.5;
+      const el = document.elementFromPoint(x, y);
+      return !!el && (balao === el || balao.contains(el));
+    });
+    expect(balaoNoTopo).toBe(true);
+
+    await page.mouse.move(0, 0);
+    await expect(tip).not.toBeVisible();
+
+    // Nenhum texto do painel usa travessão
+    const textos = await panel.locator('strong, p, span').allInnerTexts();
+    expect(textos.join(' ')).not.toContain('—');
   });
 });

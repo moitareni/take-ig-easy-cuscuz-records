@@ -3,6 +3,7 @@ import { FlipHorizontal, FlipVertical, Trash2 } from 'lucide-react';
 import { decorationsOf, getDecoration } from '../assets';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
+import { ElementListRow } from '../components/ui/ElementListRow';
 import { IconButton } from '../components/ui/IconButton';
 import { ThumbGrid } from '../components/ui/ThumbGrid';
 import { announceCanvasActivity } from '../lib/useImage';
@@ -172,47 +173,20 @@ export const DecorationStep: React.FC = () => {
       {currentDecorations.length > 0 && (
         <div className={styles.section}>
           <h3 className={styles.sectionTitle}>Na folha ({currentDecorations.length})</h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            {currentDecorations.map((d, index) => {
-              const asset = getDecoration(d.assetId);
-              const isSelected = selectedDeco?.id === d.id;
+          <div className={styles.elementList}>
+            {currentDecorations.map((d) => {
+              const label = getDecoration(d.assetId)?.label || 'Enfeite';
               return (
-                <div
+                <ElementListRow
                   key={d.id}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    padding: '8px 12px',
-                    borderRadius: 'var(--radius-sm)',
-                    border: '2px solid var(--c-border)',
-                    backgroundColor: isSelected ? 'var(--c-amarelo)' : 'var(--c-surface)',
-                    boxShadow: 'var(--shadow-sm)',
-                  }}
-                >
-                  <button
-                    type="button"
-                    onClick={() => select(d.id)}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '8px',
-                      fontFamily: 'var(--font-headline)',
-                      fontSize: '15px',
-                    }}
-                  >
-                    <span>
-                      {index + 1}. {asset?.label || 'Enfeite'}
-                    </span>
-                  </button>
-                  <IconButton
-                    icon={<Trash2 size={14} strokeWidth={2.5} />}
-                    label="Remover"
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => removeElement(d.id)}
-                  />
-                </div>
+                  label={label}
+                  selectLabel={`Selecionar ${label}`}
+                  removeLabel="Remover"
+                  selected={selectedDeco?.id === d.id}
+                  onSelect={() => select(d.id)}
+                  onRemove={() => removeElement(d.id)}
+                  bullet
+                />
               );
             })}
           </div>

@@ -1,5 +1,14 @@
 # Design Técnico — Carrossel de Posts para Instagram
 
+> **Leva 4 (11/11/2026) — o que prevalece**
+> Mudanças no editor compartilhado pelos slides; a arquitetura de slides, crossover,
+> miniaturas e exportação ZIP descrita abaixo **não foi alterada**. Fonte de verdade: `AGENTS.md`.
+> - **Passo 6 · Textura**: "Restaurar padrão" / `resetFinish()` removidos; só `enableAllFinishes()`/`disableAllFinishes()`. `finish` segue por slide.
+> - **Log "Na folha"**: componente único `ElementListRow` (caixa toda clicável, lixeira irmã, ponto de lista opcional) em `DecorationStep`, `ImageStep` e `TextStep`.
+> - **Card de rascunho**: lápis `Renomear` oculto enquanto `isEditingTitle`; `.cardTitleEditWrapper` com `max-width: 100%`.
+> - **Passo 4**: botões lado a lado via `.buttonGrid3`; "Cor do texto"; `Segmented` com `className` e `flex: 1` para simetria de altura.
+> - **Testes**: 161 unitários; e2e 79 passed / 3 skipped (82 testes). Defeito "incrementar a tela antes de haver rascunhos" descartado nesta leva.
+>
 > **Revisão 10/11/2026 — release v3 "Meus rascunhos" + levas de correção 1, 2 e 3.**
 > O diagrama "Fluxo de Dados" abaixo mostra `App.tsx` decidindo pelo `mode` e o
 > `useCarousel` lendo/escrevendo `localStorage`. **Essa parte é histórica**: na
@@ -99,7 +108,7 @@ export interface SlideData {
   id: string;
   /** Estado do documento (elementos, fundo, formato). */
   doc: Doc;
-  /** Acabamentos (papel, granulado, textura de borda). */
+  /** Acabamentos (papel, granulado, Craquelado). */
   finish: FinishState;
 }
 ```
@@ -1020,7 +1029,9 @@ bootDrafts() → home ──createDraft('carousel', format)──► EditorScree
 - `finish` é `SlideData.finish`: `enableAllFinishes()` (Leva 2) altera só o slide
   ativo e o subscriber de `main.tsx` propaga para `useCarousel`.
 - "Ativar todas" é um único `set` no `editorStore` → um único passo de undo;
-  `resetFinish()` continua como inverso (e também zera opacidades).
+  "Desativar todas" (`disableAllFinishes()`, Leva 3) é o inverso, também um único
+  `set`. **Leva 4**: "Restaurar padrão" / `resetFinish()` foram **removidos** —
+  opacidades, intensidade e tamanho do grão são sempre preservados.
 - Formato: `carouselStore.format` é imutável após a criação; `BackgroundStep`
   não renderiza o seletor no carrossel e `handleFormatChange` mantém o guard
   como defesa em profundidade.

@@ -43,12 +43,21 @@ test.describe('Meus rascunhos — histórico local', () => {
 
     const input = page.getByRole('textbox', { name: 'Nome do rascunho' });
     await expect(input).toBeVisible();
+    // O lápis sai durante a edição e só volta quando o nome é confirmado.
+    await expect(card.getByRole('button', { name: 'Renomear' })).toHaveCount(0);
     await input.fill('Flyer do forró');
     await input.press('Enter');
 
     const renamedCard = page.locator('article').filter({ hasText: 'Flyer do forró' });
     await expect(renamedCard).toHaveCount(1);
+    await expect(renamedCard.getByRole('button', { name: 'Renomear' })).toBeVisible();
     await expect(page.locator('article').filter({ hasText: /Post de/ })).toHaveCount(0);
+
+    // Clicar direto no nome também esconde o lápis; Esc cancela e o traz de volta.
+    await renamedCard.getByRole('heading', { name: 'Flyer do forró' }).click();
+    await expect(renamedCard.getByRole('button', { name: 'Renomear' })).toHaveCount(0);
+    await page.getByRole('textbox', { name: 'Nome do rascunho' }).press('Escape');
+    await expect(renamedCard.getByRole('button', { name: 'Renomear' })).toBeVisible();
 
     // Exportar direto do card na home
     const downloadPromise = page.waitForEvent('download');

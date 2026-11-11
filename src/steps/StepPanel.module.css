@@ -34,6 +34,48 @@
   gap: 8px;
 }
 
+/* Pilha de controles do card "Editar Texto": mais respiro no eixo vertical. */
+.editStack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* Cor do texto (2 colunas) ao lado de Caixa de destaque (empilhada). */
+.dualColumn {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: stretch;
+  gap: 14px;
+}
+
+/* As opções de destaque crescem até igualar a altura do grid de cores:
+   cada caixinha fica com a altura de um swatch (38 px). A especificidade
+   extra vence `.column .segment` do Segmented.module.css. */
+.borderSection {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.borderSection .borderSegmented {
+  flex: 1;
+  min-height: 0;
+}
+
+.borderSection .borderSegmented > button {
+  flex: 1 1 0;
+  min-height: 38px;
+}
+
+.fieldLabel {
+  font-family: var(--font-body);
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--c-text-main);
+}
+
 .sectionTitle {
   font-size: 16px;
   color: var(--c-text-main);
@@ -51,10 +93,33 @@
   gap: 6px;
 }
 
+/* Passo 4: os três tipos de texto lado a lado, com ícone em cima do nome.
+   A especificidade extra vence .button/.sm do Button.module.css. */
+.buttonGrid3 .addTextButton {
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  min-height: 74px;
+  padding: 8px 4px;
+  font-size: 15px;
+  line-height: 1.05;
+  white-space: normal;
+  text-align: center;
+}
+
 .row {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+/* Log "Na folha" dos Passos 2, 3 e 4: linhas clicáveis por inteiro. */
+.elementList {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
 .textarea {

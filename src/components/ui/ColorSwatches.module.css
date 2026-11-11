@@ -12,9 +12,10 @@
 }
 
 .swatches {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(2, 38px);
   gap: 8px;
-  flex-wrap: wrap;
+  justify-content: start;
 }
 
 .swatch {

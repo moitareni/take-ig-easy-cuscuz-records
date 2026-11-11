@@ -121,6 +121,6 @@ export interface SlideData {
   id: string;
   /** Estado do documento (elementos, fundo, formato). */
   doc: Doc;
-  /** Acabamentos (papel, granulado, textura de borda). */
+  /** Acabamentos (papel, granulado, craquelado). */
   finish: FinishState;
 }
