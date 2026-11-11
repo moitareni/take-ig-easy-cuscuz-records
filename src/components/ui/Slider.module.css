@@ -1,7 +1,7 @@
 .container {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
   width: 100%;
 }
 
@@ -33,6 +33,10 @@
   width: 100%;
   display: flex;
   align-items: center;
+  /* A bolinha (24px + sombra + zoom no hover) é maior que a trilha (12px):
+     o padding vertical garante margem de respiro e impede que ela encoste
+     no cabeçalho acima, na borda do cartão ou em elementos abaixo (ex.: prévias). */
+  padding: 8px 0;
 }
 
 .input {
@@ -77,7 +81,7 @@
 
 .limitMarker {
   position: absolute;
-  top: -2px;
+  top: 6px;
   width: 4px;
   height: 16px;
   background-color: var(--c-barro);

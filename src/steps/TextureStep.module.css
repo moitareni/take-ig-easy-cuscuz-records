@@ -2,7 +2,7 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 10px 12px;
+  padding: 12px 14px 14px;
   background-color: var(--c-surface);
   border: 3px solid var(--c-border);
   border-radius: var(--radius-md);
@@ -89,7 +89,7 @@
 .controls {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
   cursor: default;
 }
 
@@ -104,6 +104,7 @@
   border: 3px solid var(--c-border);
   border-radius: var(--radius-sm);
   box-shadow: var(--shadow-sm);
+  margin-top: 6px;
 }
 
 .previewImage {
