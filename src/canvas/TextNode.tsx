@@ -1,15 +1,10 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useMemo } from 'react';
 import { Group, Image as KonvaImage, Rect, Text as KonvaText } from 'react-konva';
 import type Konva from 'konva';
 import { manifest } from '../assets';
-import {
-  BORDER_PAD,
-  BORDERS,
-  BRAND_EFFECT,
-  COLORS,
-  FONT_BODY,
-  FONT_HEADLINE,
-} from '../brand/brand';
+import { BORDERS, BRAND_EFFECT, COLORS } from '../brand/brand';
+import { measureTextLayout } from '../lib/textLayout';
+import { useFontsReady } from '../lib/useFontsReady';
 import { useImage } from '../lib/useImage';
 import type { TextEl } from '../types';
 
@@ -23,8 +18,6 @@ export interface TextNodeProps {
   onDoubleClick: (e?: Konva.KonvaEventObject<unknown>) => void;
   onChange: (patch: Partial<TextEl>) => void;
   onApplyTextSize: (requested: number) => number;
-  /** Reporta a caixa total (texto + pads) em px do post para o editor in-place. */
-  onMeasure?: (w: number, h: number) => void;
   onDragMoveSnap: (node: Konva.Node) => void;
   onDragEndSnap: () => void;
 }
@@ -36,48 +29,48 @@ export const TextNode: React.FC<TextNodeProps> = ({
   onDoubleClick,
   onChange,
   onApplyTextSize,
-  onMeasure,
   onDragMoveSnap,
   onDragEndSnap,
 }) => {
-  const groupRef = useRef<Konva.Group>(null);
-  const textMeasurerRef = useRef<Konva.Text>(null);
+  const groupRef = React.useRef<Konva.Group>(null);
   const [texture] = useImage(element.border !== 'none' ? manifest.borderTexture.src : null);
+  const fontsReady = useFontsReady();
 
-  const isHeadline = element.style !== 'body';
-  const fontFamily = isHeadline ? FONT_HEADLINE : FONT_BODY;
-  const fontWeight = isHeadline ? '900' : 'bold';
-
-  const rawText = element.text || ' ';
-  const displayText = element.uppercase ? rawText.toUpperCase() : rawText;
-
-  // Mede as dimensões do texto para posicionar o offset/borda e o centro do grupo
-  const fontSize = element.fontSize;
-  const lineHeight = element.lineHeight;
-  const letterSpacing = element.letterSpacing;
-  const align = element.align;
-
-  const padX = element.border !== 'none' ? fontSize * BORDER_PAD.x : 0;
-  const padY = element.border !== 'none' ? fontSize * BORDER_PAD.y : 0;
-
-  // Recalcula o centro do grupo após mudanças de texto
-  useEffect(() => {
-    const textNode = textMeasurerRef.current;
-    const groupNode = groupRef.current;
-    if (!textNode || !groupNode) return;
-
-    const width = textNode.width() + padX * 2;
-    const height = textNode.height() + padY * 2;
-
-    groupNode.offsetX(width / 2);
-    groupNode.offsetY(height / 2);
-    onMeasure?.(width, height);
-  }, [displayText, fontSize, lineHeight, letterSpacing, padX, padY, element.border, onMeasure]);
-
-  const hasBorder = element.border !== 'none';
-  const borderConfig = hasBorder ? BORDERS[element.border as keyof typeof BORDERS] : null;
+  // Medida síncrona no render (mesma engine do desenho): a caixa de destaque
+  // e o offset do grupo nascem corretos, sem depender de seleção ou efeito.
+  const layout = useMemo(
+    () => measureTextLayout(element),
+    [
+      fontsReady,
+      element.text,
+      element.uppercase,
+      element.style,
+      element.fontSize,
+      element.lineHeight,
+      element.letterSpacing,
+      element.align,
+      element.border,
+      element.boxWidth,
+    ],
+  );
 
   const textColor = COLORS[element.color as keyof typeof COLORS] ?? COLORS.preto;
+  const hasBorder = element.border !== 'none';
+  const borderConfig = hasBorder ? BORDERS[element.border as keyof typeof BORDERS] : null;
+  const wrapped = layout.wrapWidth !== null;
+
+  const textProps = {
+    text: layout.displayText,
+    x: layout.padX,
+    y: layout.padY,
+    fontFamily: layout.fontFamily,
+    fontStyle: layout.fontStyle,
+    fontSize: element.fontSize,
+    lineHeight: element.lineHeight,
+    letterSpacing: element.letterSpacing,
+    align: element.align,
+    ...(wrapped ? { width: layout.wrapWidth ?? undefined, wrap: 'word' } : {}),
+  };
 
   return (
     <Group
@@ -86,6 +79,8 @@ export const TextNode: React.FC<TextNodeProps> = ({
       x={element.x}
       y={element.y}
       rotation={element.rotation}
+      offsetX={layout.outerWidth / 2}
+      offsetY={layout.outerHeight / 2}
       scaleX={1}
       scaleY={1}
       draggable={!isEditing}
@@ -107,10 +102,10 @@ export const TextNode: React.FC<TextNodeProps> = ({
         const node = groupRef.current;
         if (!node) return;
         const scaleX = node.scaleX();
-        const currentSize = element.fontSize;
-        const requestedSize = Math.round(currentSize * Math.abs(scaleX));
+        const requestedSize = Math.round(element.fontSize * Math.abs(scaleX));
 
-        // Reseta a escala do nó para 1 e atualiza via regra de tamanho de texto
+        // Reseta a escala do nó para 1 e atualiza via regra de tamanho de texto.
+        // A área definida é escalada proporcionalmente dentro de setTextSize.
         node.scaleX(1);
         node.scaleY(1);
 
@@ -124,32 +119,27 @@ export const TextNode: React.FC<TextNodeProps> = ({
         });
       }}
     >
-      {/* 1. Borda de Destaque com textura em modo 'soft-light' */}
+      {/* 1. Caixa de destaque com textura em modo 'soft-light' */}
       {hasBorder && borderConfig && (
         <Group
           clipFunc={(ctx) => {
-            const t = textMeasurerRef.current;
-            const w = (t ? t.width() : 100) + padX * 2;
-            const h = (t ? t.height() : 50) + padY * 2;
-            ctx.rect(0, 0, w, h);
+            ctx.rect(0, 0, layout.outerWidth, layout.outerHeight);
           }}
         >
-          {/* Fundo colorido da borda (Amarelo ou Barro) */}
           <Rect
             x={0}
             y={0}
-            width={textMeasurerRef.current ? textMeasurerRef.current.width() + padX * 2 : 100}
-            height={textMeasurerRef.current ? textMeasurerRef.current.height() + padY * 2 : 50}
+            width={layout.outerWidth}
+            height={layout.outerHeight}
             fill={borderConfig.color}
           />
-          {/* Textura sobreposta em luz indireta (soft-light) */}
           {texture && (
             <KonvaImage
               image={texture}
               x={0}
               y={0}
-              width={textMeasurerRef.current ? textMeasurerRef.current.width() + padX * 2 : 100}
-              height={textMeasurerRef.current ? textMeasurerRef.current.height() + padY * 2 : 50}
+              width={layout.outerWidth}
+              height={layout.outerHeight}
               globalCompositeOperation="soft-light"
               opacity={borderConfig.textureOpacity}
               listening={false}
@@ -161,15 +151,7 @@ export const TextNode: React.FC<TextNodeProps> = ({
       {/* 2. Traçado externo e sombra projetada da identidade (Photoshop) */}
       {element.brandEffect && (
         <KonvaText
-          text={displayText}
-          x={padX}
-          y={padY}
-          fontFamily={fontFamily}
-          fontStyle={fontWeight}
-          fontSize={fontSize}
-          lineHeight={lineHeight}
-          letterSpacing={letterSpacing}
-          align={align}
+          {...textProps}
           fill={BRAND_EFFECT.strokeColor}
           stroke={BRAND_EFFECT.strokeColor}
           strokeWidth={BRAND_EFFECT.strokeOutside * 2} // 4px stroke -> 2px visíveis externamente
@@ -184,20 +166,7 @@ export const TextNode: React.FC<TextNodeProps> = ({
       )}
 
       {/* 3. Texto principal preenchido (desenhado no topo para traçado 100% externo) */}
-      <KonvaText
-        ref={textMeasurerRef}
-        text={displayText}
-        x={padX}
-        y={padY}
-        fontFamily={fontFamily}
-        fontStyle={fontWeight}
-        fontSize={fontSize}
-        lineHeight={lineHeight}
-        letterSpacing={letterSpacing}
-        align={align}
-        fill={textColor}
-        visible={!isEditing}
-      />
+      <KonvaText {...textProps} fill={textColor} visible={!isEditing} />
     </Group>
   );
 };

@@ -1,5 +1,4 @@
 import type { PostFormat } from '../../brand/brand';
-import { clearSlideThumbCache } from '../../canvas/hooks/useSlideThumb';
 import {
   defaultSlide,
   loadSlideIntoEditor,
@@ -569,7 +568,6 @@ export async function closeDraftToHome(): Promise<void> {
   dirty = false;
 
   useCarousel.setState({ mode: null });
-  clearSlideThumbCache();
   useDraftsStore.getState().clearActiveDraft();
   useDraftsStore.getState().setScreen('home');
 

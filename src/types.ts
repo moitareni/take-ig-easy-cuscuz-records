@@ -13,6 +13,13 @@ export interface BaseEl {
   scale: number;
   /** true = este elemento vaza para o slide seguinte (crossover visual). */
   crossover?: boolean;
+  /**
+   * Presente só em **cópias materializadas** de crossover: id do slide DONO da
+   * arte. A cópia nunca é fonte de sangria — só o dono cria/atualiza/remove.
+   * Sem isso, uma cópia órfã (após reordenar páginas) se comportava como dona e
+   * apagava/colonizava elementos de outras páginas.
+   */
+  crossFrom?: string;
 }
 
 export interface DecorationEl extends BaseEl {
@@ -34,6 +41,15 @@ export interface TextEl extends BaseEl {
   color: BrandColor;
   brandEffect: boolean;
   border: BorderKind;
+  /**
+   * Largura da área de texto em px do post (área útil de quebra, sem os pads
+   * da borda). `undefined` = área automática (durante a criação); ao sair da
+   * edição ela é congelada com a largura do conteúdo.
+   *
+   * A **altura é sempre automática** (calculada pelo conteúdo e pela largura).
+   * Não existe altura manual: as alças da área mudam só a largura.
+   */
+  boxWidth?: number;
 }
 
 export interface LogoEl extends BaseEl {

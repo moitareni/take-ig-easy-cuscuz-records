@@ -251,7 +251,7 @@ export const EditorScreen: React.FC = () => {
             </aside>
           </section>
 
-          {mode === 'carousel' && <SlideTray stageRef={canvasRef} />}
+          {mode === 'carousel' && <SlideTray />}
         </div>
       </main>
     </div>

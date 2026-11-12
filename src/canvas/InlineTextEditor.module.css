@@ -6,20 +6,59 @@
   cursor: text;
 }
 
+/* Edição in-place: a caixa é exatamente a área de texto (sem largura mínima
+   arbitrária — era ela que cortava o conteúdo ao reentrar na edição). */
 .editorBox {
   position: absolute;
-  min-width: 220px;
+  box-sizing: border-box;
   pointer-events: auto;
+  outline: 2px dashed var(--c-verde);
+  outline-offset: 2px;
 }
 
-/* Edição in-place: transparente, sem borda — o texto aparece onde está */
 .textarea {
   display: block;
+  box-sizing: border-box;
   width: 100%;
   background-color: transparent;
   border: none;
   outline: none;
   resize: none;
   overflow: hidden;
-  white-space: pre;
+}
+
+/* O `outline` global de :focus-visible (verde, sólido) desenhava uma SEGUNDA
+   caixa no tamanho do conteúdo, "descolada" da área durante o arraste. A
+   indicação de foco da edição é o tracejado da .editorBox. */
+.textarea:focus,
+.textarea:focus-visible {
+  outline: none;
+}
+
+/* Alças da ÁREA de texto: verdes, distintas das alças amarelas do texto. */
+.handle {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  box-sizing: border-box;
+  background: var(--c-verde);
+  border: 2px solid var(--c-preto);
+  border-radius: 3px;
+  box-shadow: 0 2px 0 rgba(11, 5, 0, 0.25);
+  touch-action: none;
+  z-index: 2;
+}
+
+.handleE {
+  left: 100%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  cursor: ew-resize;
+}
+
+.handleW {
+  left: 0;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  cursor: ew-resize;
 }

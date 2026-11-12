@@ -1,8 +1,20 @@
 import { create } from 'zustand';
 import { CAROUSEL_MAX_SLIDES, type PostFormat } from '../brand/brand';
-import { reconcileAllCrossovers, syncCrossoverFromActiveSlide } from '../lib/crossover';
+import {
+  isCrossoverCopy,
+  pruneOrphanCrossoverCopies,
+  reconcileAllCrossovers,
+  syncCrossoverFromActiveSlide,
+} from '../lib/crossover';
 import type { Doc, FinishState, SlideData } from '../types';
-import { defaultFinish, emptyDoc, sanitize, sanitizeFinish, useEditor } from './editorStore';
+import {
+  defaultFinish,
+  emptyDoc,
+  flushTextEditing,
+  sanitize,
+  sanitizeFinish,
+  useEditor,
+} from './editorStore';
 
 export type CarouselMode = 'single' | 'carousel' | null;
 
@@ -72,10 +84,24 @@ function enforceValidCrossover(slides: SlideData[], format: PostFormat = '3:4'):
 }
 
 /**
+ * Slide cujo `doc` está carregado no `useEditor`. A posse é pelo **id** do
+ * slide, nunca pelo índice: depois de reordenar/remover páginas o índice pode
+ * estar defasado por um frame, e gravar pelo índice jogava o doc inteiro
+ * (fundo, textura, elementos) na página errada.
+ */
+let editingSlideId: string | null = null;
+
+/** Id do slide que está no editor (usado por testes e pelo autosave). */
+export function activeEditorSlideId(): string | null {
+  return editingSlideId;
+}
+
+/**
  * Carrega o slide ativo no useEditor, reseta o passo para 0, limpa seleção e
  * limpa o histórico temporal para isolar o undo/redo por slide.
  */
 export function loadSlideIntoEditor(slide: SlideData): void {
+  editingSlideId = slide.id;
   useEditor.setState({
     doc: slide.doc,
     finish: slide.finish,
@@ -90,6 +116,15 @@ export function loadSlideIntoEditor(slide: SlideData): void {
 function cloneDocAndFinish(doc: Doc, finish: FinishState, format: PostFormat): { doc: Doc; finish: FinishState } {
   const clonedDoc: Doc = JSON.parse(JSON.stringify(doc));
   clonedDoc.format = format;
+  // Cada slide é dono dos seus elementos: o duplicado ganha ids NOVOS. O
+  // crossover casa elementos por id entre páginas vizinhas — ids repetidos
+  // faziam o slide duplicado ser tratado como "cópia crossover" e perder os
+  // elementos ao ativar o original.
+  // Cópias de crossover não são arte do slide: o duplicado nasce só com os
+  // donos (e o reconcile materializa as cópias da vizinhança nova).
+  clonedDoc.elements = clonedDoc.elements
+    .filter((el) => !isCrossoverCopy(el))
+    .map((el) => ({ ...el, id: uid() }));
   const clonedFinish: FinishState = JSON.parse(JSON.stringify(finish));
   return { doc: clonedDoc, finish: clonedFinish };
 }
@@ -149,6 +184,8 @@ export const useCarousel = create<CarouselState>()(
       },
 
       addSlide: () => {
+        // Fecha a edição de texto pendente antes de trocar o slide ativo.
+        flushTextEditing();
         const s = get();
         if (s.slides.length >= CAROUSEL_MAX_SLIDES) {
           useEditor
@@ -164,6 +201,7 @@ export const useCarousel = create<CarouselState>()(
       },
 
       duplicateSlide: (index) => {
+        flushTextEditing();
         const s = get();
         if (index < 0 || index >= s.slides.length) return;
         if (s.slides.length >= CAROUSEL_MAX_SLIDES) {
@@ -188,6 +226,7 @@ export const useCarousel = create<CarouselState>()(
       },
 
       removeSlide: (index) => {
+        flushTextEditing();
         const s = get();
         if (index < 0 || index >= s.slides.length) return;
         if (s.slides.length <= 1) {
@@ -211,6 +250,14 @@ export const useCarousel = create<CarouselState>()(
       },
 
       reorderSlides: (fromIndex, toIndex) => {
+        flushTextEditing();
+        /** Deslocamento do índice ativo quando não há slide do editor (fallback). */
+        const shiftIndex = (active: number): number => {
+          if (active === fromIndex) return toIndex;
+          if (fromIndex < active && toIndex >= active) return active - 1;
+          if (fromIndex > active && toIndex <= active) return active + 1;
+          return active;
+        };
         set((s) => {
           if (
             fromIndex < 0 ||
@@ -221,22 +268,32 @@ export const useCarousel = create<CarouselState>()(
           ) {
             return s;
           }
-          const rawSlides = [...s.slides];
-          const [moved] = rawSlides.splice(fromIndex, 1);
-          rawSlides.splice(toIndex, 0, moved);
-          const slides = enforceValidCrossover(rawSlides, s.format);
+          // Reordenar é SÓ trocar posições: os docs/finishes são os MESMOS
+          // objetos. Nada de reconcile/crossover aqui — materializar vizinhos
+          // nesta ação movia elementos entre páginas e corrompia a arte.
+          const ordered = [...s.slides];
+          const [moved] = ordered.splice(fromIndex, 1);
+          ordered.splice(toIndex, 0, moved);
 
-          const active = s.activeSlideIndex;
-          let newActive = active;
-          if (active === fromIndex) newActive = toIndex;
-          else if (fromIndex < active && toIndex >= active) newActive = active - 1;
-          else if (fromIndex > active && toIndex <= active) newActive = active + 1;
+          // A única limpeza: cópias de crossover que perderam o dono vizinho
+          // saem (ver lib/crossover.ts — posse explícita por `crossFrom`).
+          const slides = pruneOrphanCrossoverCopies(ordered, s.format);
+
+          // A página ativa é a que está no editor (posse por id), não o índice
+          // antigo: se algo defasou, quem manda é o doc que a usuária vê.
+          const editorIndex = editingSlideId
+            ? slides.findIndex((slide) => slide.id === editingSlideId)
+            : -1;
+          const newActive = editorIndex >= 0 ? editorIndex : shiftIndex(s.activeSlideIndex);
 
           return { slides, activeSlideIndex: newActive };
         });
       },
 
       setActiveSlide: (index) => {
+        // Fecha a edição de texto pendente ANTES de trocar o índice, para o
+        // doc congelado ser gravado no slide que está sendo deixado.
+        flushTextEditing();
         const s = get();
         if (index < 0 || index >= s.slides.length) return;
         set({ activeSlideIndex: index });
@@ -245,18 +302,25 @@ export const useCarousel = create<CarouselState>()(
 
       updateActiveSlide: (doc, finish) => {
         set((s) => {
-          const slide = s.slides[s.activeSlideIndex];
+          // Grava pelo DONO do doc (id do slide carregado no editor). Se o
+          // índice estiver defasado, corrige — o doc nunca cai na página errada.
+          const byId = editingSlideId
+            ? s.slides.findIndex((slide) => slide.id === editingSlideId)
+            : -1;
+          const index = byId >= 0 ? byId : s.activeSlideIndex;
+          const slide = s.slides[index];
           if (!slide) return s;
           const normalizedDoc = doc.format === s.format ? doc : { ...doc, format: s.format };
           const slides = syncCrossoverFromActiveSlide(
             s.slides,
-            s.activeSlideIndex,
+            index,
             slide.doc,
             normalizedDoc,
             finish,
             s.format,
           );
-          return slides === s.slides ? s : { slides };
+          if (slides === s.slides && index === s.activeSlideIndex) return s;
+          return { slides, activeSlideIndex: index };
         });
       },
 

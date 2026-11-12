@@ -263,6 +263,65 @@ function logoPlacement(
   return { ...map[place], rotation: 0 };
 }
 
+/**
+ * Medidor da área de texto, registrado pelo EditorCanvas (é lá que o Konva
+ * está disponível). O store usa isto para congelar as dimensões do conteúdo
+ * quando a edição termina, sem importar Konva aqui.
+ */
+export type TextBoxMeasurer = (el: TextEl) => number;
+
+let textBoxMeasurer: TextBoxMeasurer | null = null;
+
+export function setTextBoxMeasurer(measurer: TextBoxMeasurer | null): void {
+  textBoxMeasurer = measurer;
+}
+
+const boxSize = (value: unknown): number | undefined => {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) return undefined;
+  return Math.max(1, Math.round(value));
+};
+
+function sanitizeTextElement(el: El): El {
+  if (el.kind !== 'text') return el;
+  const boxWidth = boxSize(el.boxWidth);
+  // `boxHeight` de rascunhos antigos: a altura agora é sempre automática.
+  const hasLegacyHeight = Object.prototype.hasOwnProperty.call(el, 'boxHeight');
+  if (boxWidth === el.boxWidth && !hasLegacyHeight) return el;
+  const next: TextEl = { ...el };
+  if (boxWidth === undefined) delete next.boxWidth;
+  else next.boxWidth = boxWidth;
+  delete (next as TextEl & { boxHeight?: number }).boxHeight;
+  return next;
+}
+
+/**
+ * Congela a área automática (durante a criação) com as dimensões atuais do
+ * conteúdo. Depois disso, edições posteriores respeitam a área definida.
+ */
+function freezeTextBox(el: El): El {
+  if (el.kind !== 'text' || el.boxWidth !== undefined || !textBoxMeasurer) return el;
+  const boxWidth = boxSize(textBoxMeasurer(el));
+  if (boxWidth === undefined) return el;
+  return { ...el, boxWidth };
+}
+
+function freezeDocTextBox(doc: Doc, editingId: string | null): Doc {
+  if (!editingId) return doc;
+  const el = doc.elements.find((e) => e.id === editingId);
+  if (!el || el.kind !== 'text' || el.boxWidth !== undefined) return doc;
+  const frozen = freezeTextBox(el);
+  if (frozen === el) return doc;
+  return { ...doc, elements: doc.elements.map((e) => (e.id === editingId ? frozen : e)) };
+}
+
+/** Fecha a edição de texto pendente, gravando a área automática no doc. */
+export function flushTextEditing(): void {
+  const state = useEditor.getState();
+  if (!state.editingId) return;
+  const doc = freezeDocTextBox(state.doc, state.editingId);
+  if (doc !== state.doc) useEditor.setState({ doc });
+}
+
 /** Remove referências a assets que não existem mais (ex.: asset apagado da pasta). */
 export function sanitize(doc: Doc | undefined): Doc {
   if (!doc) return emptyDoc();
@@ -277,13 +336,15 @@ export function sanitize(doc: Doc | undefined): Doc {
     backgroundFlipX: Boolean(doc.backgroundFlipX),
     backgroundFlipY: Boolean(doc.backgroundFlipY),
     backgroundOffsetY,
-    elements: (doc.elements ?? []).filter(
-      (e) =>
-        // Enfeite só fica se o asset do manifest existir.
-        (e.kind !== 'decoration' || getDecoration(e.assetId)) &&
-        // Imagem do usuário só fica com metadados completos (o blob vem do IndexedDB).
-        (e.kind !== 'image' || isPersistedImage(e)),
-    ),
+    elements: (doc.elements ?? [])
+      .filter(
+        (e) =>
+          // Enfeite só fica se o asset do manifest existir.
+          (e.kind !== 'decoration' || getDecoration(e.assetId)) &&
+          // Imagem do usuário só fica com metadados completos (o blob vem do IndexedDB).
+          (e.kind !== 'image' || isPersistedImage(e)),
+      )
+      .map(sanitizeTextElement),
   };
 }
 
@@ -317,9 +378,11 @@ export const useEditor = create<EditorState>()(
 
           setStep: (step) =>
             set((s) => {
-              const sel = s.doc.elements.find((e) => e.id === s.selectedId);
+              // Trocar de etapa encerra a edição: a área automática é congelada.
+              const doc = freezeDocTextBox(s.doc, s.editingId);
+              const sel = doc.elements.find((e) => e.id === s.selectedId);
               const keep = sel && STEP_OF_KIND[sel.kind] === step;
-              return { step, ...selection(keep && sel ? [sel.id] : []), editingId: null };
+              return { doc, step, ...selection(keep && sel ? [sel.id] : []), editingId: null };
             }),
           select: (id) =>
             set((s) => {
@@ -341,7 +404,13 @@ export const useEditor = create<EditorState>()(
               const only = next.length === 1 ? s.doc.elements.find((e) => e.id === next[0]) : undefined;
               return only ? { ...selection(next), step: STEP_OF_KIND[only.kind] } : selection(next);
             }),
-          setEditing: (id) => set({ editingId: id }),
+          setEditing: (id) =>
+            set((s) => {
+              // Sair da edição define a área de texto com o tamanho do conteúdo
+              // (Cenário 1 de 4.2). Edições posteriores respeitam essa área.
+              if (!s.editingId || s.editingId === id) return { editingId: id };
+              return { editingId: id, doc: freezeDocTextBox(s.doc, s.editingId) };
+            }),
           setGuides: (g) => {
             const cur = get().guides;
             if (cur.v !== g.v || cur.h !== g.h) set({ guides: g });
@@ -608,7 +677,21 @@ export const useEditor = create<EditorState>()(
             if (!el || el.kind !== 'text') return requested;
             const { value, error } = clampTextSize(get().doc.elements, el, requested);
             if (error) get().showToast('error', error);
-            if (value !== el.fontSize || el.scale !== 1) mapEl(id, (e) => ({ ...e, fontSize: value, scale: 1 }));
+
+            // A largura definida acompanha proporcionalmente a fonte (4.5),
+            // preservando as quebras. A altura é automática e acompanha sozinha.
+            const ratio = el.fontSize > 0 ? value / el.fontSize : 1;
+            const nextBoxWidth =
+              el.boxWidth !== undefined ? Math.max(1, Math.round(el.boxWidth * ratio)) : undefined;
+            const boxChanged = nextBoxWidth !== el.boxWidth;
+
+            if (value !== el.fontSize || el.scale !== 1 || boxChanged) {
+              mapEl(id, (e) => {
+                const next: TextEl = { ...(e as TextEl), fontSize: value, scale: 1 };
+                if (nextBoxWidth !== undefined) next.boxWidth = nextBoxWidth;
+                return next;
+              });
+            }
             return value;
           },
 

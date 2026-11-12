@@ -1,8 +1,9 @@
 import { CAROUSEL_MAX_SLIDES, type PostFormat } from '../../brand/brand';
-import { extractSingleSlideData } from '../crossover';
+import { extractSingleSlideData, normalizeCrossoverOwnership } from '../crossover';
 import type { Doc, FinishState, SlideData } from '../../types';
 import { defaultSlide, sanitizeFormat, sanitizeSlide } from '../../store/carouselStore';
 import { sanitize, sanitizeFinish } from '../../store/editorStore';
+import { dedupeSlideElementIds } from '../slideIds';
 import { defaultDraftTitle } from './content';
 import {
   COVERS_STORE,
@@ -95,8 +96,13 @@ export function sanitizeDraftBody(raw: unknown, fallbackFormat: PostFormat = '3:
   if (r.kind === 'carousel') {
     const format = sanitizeFormat(r.format ?? fallbackFormat);
     const rawSlides = Array.isArray(r.slides) ? r.slides.slice(0, CAROUSEL_MAX_SLIDES) : [];
-    const slides = rawSlides.map((slide) => sanitizeSlide(slide, format));
-    if (slides.length === 0) slides.push(defaultSlide(format));
+    // Cicatriza rascunhos antigos com slides duplicados que compartilham ids
+    // de elemento (ver lib/slideIds.ts) antes de qualquer sincronização.
+    let slides = dedupeSlideElementIds(rawSlides.map((slide) => sanitizeSlide(slide, format)));
+    if (slides.length === 0) slides = [defaultSlide(format)];
+    // Cicatriza a posse das cópias de crossover de rascunhos antigos (antes de
+    // `crossFrom`) e descarta cópias órfãs — ver lib/crossover.ts.
+    slides = normalizeCrossoverOwnership(slides, format);
     const activeSlideIndex = clampInt(r.activeSlideIndex, 0, slides.length - 1, 0);
     return {
       id: r.id,

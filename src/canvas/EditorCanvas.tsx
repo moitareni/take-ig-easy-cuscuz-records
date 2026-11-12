@@ -9,9 +9,9 @@ import {
   getLogo,
   getPaperTexture,
 } from '../assets';
-import { COLORS, GUIDE_SNAP_THRESHOLD, getPostDimensions } from '../brand/brand';
+import { GUIDE_SNAP_THRESHOLD, getPostDimensions } from '../brand/brand';
 import { alignDelta, snapToCenter, snapToGuides } from '../lib/align';
-import { CROSSOVER_ZONE, canElementBleedToSide } from '../lib/crossover';
+import { CROSSOVER_ZONE, canElementBleedToSide, isCrossoverCopy } from '../lib/crossover';
 import {
   buildTransformPatches,
   groupLimitMessage,
@@ -26,14 +26,16 @@ import {
   useLoadingImages,
   type CanvasActivityKind,
 } from '../lib/useImage';
+import { measureTextLayout } from '../lib/textLayout';
 import { getUserImageEntry } from '../lib/userImages';
 import { useCarousel } from '../store/carouselStore';
-import { useEditor } from '../store/editorStore';
+import { setTextBoxMeasurer, useEditor } from '../store/editorStore';
 
 import type { AlignMode, Box, DecorationEl, El, ImageEl, LogoEl, TextEl } from '../types';
 import { CrossoverMirrorNode } from './CrossoverMirrorNode';
 import { MirrorTransformerEl } from './mirrorTransformer';
 import { useCanvasFitWidth } from './hooks/useCanvasFitWidth';
+import { useSelectionAccent } from './hooks/useSelectionAccent';
 import { useFileDrop } from './hooks/useFileDrop';
 import { usePanMode } from './hooks/usePanMode';
 import { useTransformWatchdog } from './hooks/useTransformWatchdog';
@@ -169,6 +171,20 @@ export const EditorCanvas = forwardRef<EditorCanvasHandle>((_props, ref) => {
     left: false,
     right: false,
   });
+
+  // Cor da caixa de seleção e do realce de texto conforme o fundo do post:
+  // o amarelo da marca some sobre fundos amarelos/creme, então a seleção lê o
+  // ambiente do elemento e troca para o preto quando precisa (lib/selectionContrast).
+  const selectionTargets = editingId ? [editingId] : selectedIds;
+  const selectionRevision = `${activeSlideIndex}|${doc.backgroundId}|${loadingUrls.size}|${doc.elements
+    .map((el) => `${el.id}:${Math.round(el.x)},${Math.round(el.y)}`)
+    .join('|')}`;
+  const selectionTheme = useSelectionAccent(
+    stageRef,
+    layerRef,
+    selectionTargets,
+    selectionRevision,
+  );
 
   const select = useEditor((s) => s.select);
   const toggleSelect = useEditor((s) => s.toggleSelect);
@@ -421,13 +437,11 @@ export const EditorCanvas = forwardRef<EditorCanvasHandle>((_props, ref) => {
   // Espaço segurado = modo pan (arrastar move a rolagem, sem tocar nos elementos)
   const { panning, panActive, handlePanMouseDown } = usePanMode(containerRef);
 
-  // Caixa medida do texto em edição (px do post, com pads) para o editor in-place
-  const [editBox, setEditBox] = useState<{ w: number; h: number } | null>(null);
+  // O store congela a LARGURA da área de texto ao sair da edição; a medição
+  // acontece aqui, onde o Konva (mesma engine do desenho) está disponível.
   useEffect(() => {
-    setEditBox(null);
-  }, [editingId]);
-  const handleMeasure = useCallback((w: number, h: number) => {
-    setEditBox((prev) => (prev && prev.w === w && prev.h === h ? prev : { w, h }));
+    setTextBoxMeasurer((el) => measureTextLayout(el).contentWidth);
+    return () => setTextBoxMeasurer(null);
   }, []);
 
   // Fecha a edição in-place e devolve a seleção ao texto
@@ -721,6 +735,12 @@ export const EditorCanvas = forwardRef<EditorCanvasHandle>((_props, ref) => {
   const editingElement = doc.elements.find(
     (e): e is TextEl => e.id === editingId && e.kind === 'text'
   );
+  // Mesma medida usada pelo canvas: a área de edição nasce do tamanho real,
+  // sem estado temporário nem recálculo dependente de seleção.
+  const editingLayout = useMemo(
+    () => (editingElement ? measureTextLayout(editingElement) : null),
+    [editingElement],
+  );
 
   return (
     <>
@@ -815,7 +835,6 @@ export const EditorCanvas = forwardRef<EditorCanvasHandle>((_props, ref) => {
                     }}
                     onChange={(patch) => changeEl(el.id, patch)}
                     onApplyTextSize={(req) => applyTextSize(el.id, req)}
-                    onMeasure={editingId === el.id ? handleMeasure : undefined}
                     onDragMoveSnap={handleDragMoveSnap}
                     onDragEndSnap={handleDragEndSnap}
                   />
@@ -856,6 +875,7 @@ export const EditorCanvas = forwardRef<EditorCanvasHandle>((_props, ref) => {
               (
                 carouselSlides[activeSlideIndex - 1]?.doc.elements.filter(
                   (e) =>
+                    !isCrossoverCopy(e) &&
                     canElementBleedToSide(e, 'right', postW) &&
                     !doc.elements.some((cur) => cur.id === e.id),
                 ) ?? []
@@ -874,6 +894,7 @@ export const EditorCanvas = forwardRef<EditorCanvasHandle>((_props, ref) => {
               (
                 carouselSlides[activeSlideIndex + 1]?.doc.elements.filter(
                   (e) =>
+                    !isCrossoverCopy(e) &&
                     canElementBleedToSide(e, 'left', postW) &&
                     !doc.elements.some((cur) => cur.id === e.id),
                 ) ?? []
@@ -957,12 +978,12 @@ export const EditorCanvas = forwardRef<EditorCanvasHandle>((_props, ref) => {
       </div>
 
       {/* Editor de texto in-place ao dar duplo clique (estilo Photoshop) */}
-      {editingElement && (
+      {editingElement && editingLayout && (
         <InlineTextEditor
           element={editingElement}
-          boxW={editBox?.w ?? null}
-          boxH={editBox?.h ?? null}
+          layout={editingLayout}
           scaleRatio={scaleRatio}
+          selectionTheme={selectionTheme}
           stageRect={(() => {
             const r = stageRef.current?.container()?.getBoundingClientRect();
             // O contêiner começa padX/padY px antes da folha; devolve a origem
@@ -1007,11 +1028,11 @@ export const EditorCanvas = forwardRef<EditorCanvasHandle>((_props, ref) => {
               'bottom-right',
             ]}
             rotateEnabled
-            borderStroke={COLORS.amarelo}
+            borderStroke={selectionTheme.accent}
             borderStrokeWidth={3}
             borderDash={[6, 4]}
-            anchorFill={COLORS.amarelo}
-            anchorStroke={COLORS.preto}
+            anchorFill={selectionTheme.accent}
+            anchorStroke={selectionTheme.outline}
             anchorStrokeWidth={2}
             anchorSize={16}
             anchorCornerRadius={4}

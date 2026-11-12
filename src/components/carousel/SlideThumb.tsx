@@ -1,10 +1,8 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useState } from 'react';
 import { Trash2 } from 'lucide-react';
-import { getBackground } from '../../assets';
 import type { PostFormat } from '../../brand/brand';
-import type { EditorCanvasHandle } from '../../canvas/EditorCanvas';
-import { useSlideThumb } from '../../canvas/hooks/useSlideThumb';
-import { PreviewImage, type PreviewImageStatus } from '../ui/PreviewImage';
+import { SlidePreview } from '../../canvas/SlidePreview';
+import { dropPositionFromPointer, type DropPosition } from '../../lib/slideOrder';
 import type { SlideData } from '../../types';
 import styles from './SlideThumb.module.css';
 
@@ -16,15 +14,16 @@ export interface SlideThumbProps {
   totalSlides: number;
   format: PostFormat;
   isActive: boolean;
-  stageRef: React.RefObject<EditorCanvasHandle | null>;
   onSelect: (index: number) => void;
   onRequestRemove: (index: number) => void;
-  onReorder: (fromIndex: number, toIndex: number) => void;
+  /** `position` é o lado do alvo onde a página deve entrar (antes/depois). */
+  onReorder: (fromIndex: number, targetIndex: number, position: DropPosition) => void;
   /** Enquanto a tira hidrata, as miniaturas e seus botões ficam desativados. */
   disabled?: boolean;
-  /** Avisa que a prévia deste slide terminou (libera os botões da tira). */
-  onPreviewReady?: (index: number) => void;
 }
+
+/** Largura da prévia; casa com as dimensões do `.thumbWrapper` por formato. */
+const PREVIEW_WIDTH: Record<PostFormat, number> = { '3:4': 60, '4:3': 88, '1:1': 72 };
 
 export const SlideThumb: React.FC<SlideThumbProps> = ({
   slide,
@@ -34,48 +33,12 @@ export const SlideThumb: React.FC<SlideThumbProps> = ({
   totalSlides,
   format,
   isActive,
-  stageRef,
   onSelect,
   onRequestRemove,
   onReorder,
   disabled = false,
-  onPreviewReady,
 }) => {
-  const rootRef = useRef<HTMLDivElement>(null);
-  const [isVisible, setIsVisible] = useState(true);
-
-  useEffect(() => {
-    const el = rootRef.current;
-    if (!el || typeof IntersectionObserver === 'undefined') return;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          setIsVisible(entry.isIntersecting);
-        }
-      },
-      { threshold: 0.1 },
-    );
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, []);
-
-  const thumbUrl = useSlideThumb(
-    stageRef,
-    slide,
-    format,
-    isActive,
-    isVisible,
-    prevSlide,
-    nextSlide,
-  );
-  const bgAsset = getBackground(slide.doc.backgroundId);
-  const previewSrc = thumbUrl ?? bgAsset?.thumb ?? null;
-
-  // Só a miniatura do slide ativo libera os botões. `error` também libera:
-  // uma captura que falhou nunca pode deixar a tira travada.
-  const handlePreviewStatus = (status: PreviewImageStatus) => {
-    if (status === 'loaded' || status === 'error') onPreviewReady?.(index);
-  };
+  const [dropSide, setDropSide] = useState<DropPosition | null>(null);
 
   const aspectClass =
     format === '4:3'
@@ -91,27 +54,67 @@ export const SlideThumb: React.FC<SlideThumbProps> = ({
 
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
+    // Não deixa o arraste de páginas chegar ao canvas / outros handlers.
+    e.stopPropagation();
     e.dataTransfer.dropEffect = 'move';
+    const side = dropPositionFromPointer(e.clientX, e.currentTarget.getBoundingClientRect());
+    setDropSide((cur) => (cur === side ? cur : side));
+  };
+
+  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+    const next = e.relatedTarget as Node | null;
+    if (next && e.currentTarget.contains(next)) return;
+    setDropSide(null);
   };
 
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
-    const from = parseInt(e.dataTransfer.getData('text/plain'), 10);
-    if (!Number.isNaN(from) && from !== index) {
-      onReorder(from, index);
+    e.stopPropagation();
+    if (disabled) return;
+
+    const from = Number.parseInt(e.dataTransfer.getData('text/plain'), 10);
+    const position = dropPositionFromPointer(
+      e.clientX,
+      e.currentTarget.getBoundingClientRect(),
+    );
+    setDropSide(null);
+    if (!Number.isNaN(from)) {
+      onReorder(from, index, position);
     }
   };
 
   return (
     <div
-      ref={rootRef}
       className={`${styles.thumbWrapper} ${aspectClass} ${isActive ? styles.active : ''}`}
       draggable={!disabled}
       onDragStart={handleDragStart}
       onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
       onDrop={handleDrop}
+      onDragEnd={() => setDropSide(null)}
       data-slide-index={index}
     >
+      {dropSide && (
+        <span
+          className={styles.dropIndicator}
+          data-side={dropSide}
+          data-drop-indicator={dropSide}
+          aria-hidden="true"
+        />
+      )}
+
+      {/* Miniatura viva: renderiza o doc deste slide, sem captura/cache. */}
+      <div className={styles.previewLayer}>
+        <SlidePreview
+          doc={slide.doc}
+          finish={slide.finish}
+          format={format}
+          width={PREVIEW_WIDTH[format]}
+          prevSlide={prevSlide}
+          nextSlide={nextSlide}
+        />
+      </div>
+
       <button
         type="button"
         className={styles.thumbButton}
@@ -119,25 +122,7 @@ export const SlideThumb: React.FC<SlideThumbProps> = ({
         disabled={disabled}
         aria-label={`Slide ${index + 1}${isActive ? ' (ativo)' : ''}`}
         aria-current={isActive ? 'true' : undefined}
-      >
-        {/* Slide ativo sem miniatura ainda: mostra o spinner em vez do "Vazio"
-            que piscava e sumia. Slides inativos/verdadeiramente vazios mantêm
-            o estado neutro. */}
-        <PreviewImage
-          src={previewSrc}
-          alt={`Miniatura do slide ${index + 1}`}
-          imgClassName={styles.thumbImage}
-          onStatusChange={handlePreviewStatus}
-          eager
-          fallback={
-            isActive && !previewSrc ? undefined : (
-              <span className={styles.placeholder}>
-                <span className={styles.placeholderText}>Vazio</span>
-              </span>
-            )
-          }
-        />
-      </button>
+      />
 
       <span className={styles.ordinalBadge} aria-hidden="true">
         {index + 1}

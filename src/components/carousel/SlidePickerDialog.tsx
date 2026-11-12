@@ -1,9 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { getCachedSlideThumb } from '../../canvas/hooks/useSlideThumb';
+import { SlidePreview } from '../../canvas/SlidePreview';
 import { convertActiveCarouselToSingle } from '../../lib/drafts/session';
 import { useCarousel } from '../../store/carouselStore';
 import { Button } from '../ui/Button';
-import { PreviewImage } from '../ui/PreviewImage';
 import styles from './SlidePickerDialog.module.css';
 
 export interface SlidePickerDialogProps {
@@ -19,6 +18,7 @@ export const SlidePickerDialog: React.FC<SlidePickerDialogProps> = ({
 }) => {
   const slides = useCarousel((s) => s.slides);
   const activeSlideIndex = useCarousel((s) => s.activeSlideIndex);
+  const format = useCarousel((s) => s.format);
 
   const [selected, setSelected] = useState<SelectionOption>(activeSlideIndex);
 
@@ -49,7 +49,6 @@ export const SlidePickerDialog: React.FC<SlidePickerDialogProps> = ({
 
         <div className={styles.slideList}>
           {slides.map((slide, idx) => {
-            const thumb = getCachedSlideThumb(slide.id);
             const isChosen = selected === idx;
             return (
               <button
@@ -59,12 +58,13 @@ export const SlidePickerDialog: React.FC<SlidePickerDialogProps> = ({
                 onClick={() => setSelected(idx)}
               >
                 <div className={styles.thumbBox}>
-                  <PreviewImage
-                    src={thumb}
-                    alt={`Miniatura do slide ${idx + 1}`}
-                    imgClassName={styles.thumbImg}
-                    eager
-                    fallback={<span className={styles.thumbPlaceholder}>#{idx + 1}</span>}
+                  <SlidePreview
+                    doc={slide.doc}
+                    finish={slide.finish}
+                    format={format}
+                    width={60}
+                    prevSlide={slides[idx - 1]}
+                    nextSlide={slides[idx + 1]}
                   />
                 </div>
                 <span className={styles.slideLabel}>Slide {idx + 1}</span>

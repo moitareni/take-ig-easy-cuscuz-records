@@ -126,7 +126,19 @@ describe('carouselStore', () => {
 
         const copy = st.slides[1];
         expect(copy.id).not.toBe(orig.id);
-        expect(copy.doc).toEqual(orig.doc);
+
+        // Conteúdo igual, mas cada slide é dono dos seus elementos: os ids
+        // são novos no duplicado (o crossover casa por id entre vizinhas).
+        const withoutElementIds = (doc: typeof orig.doc) => ({
+          ...doc,
+          elements: doc.elements.map((el) => {
+            const content = { ...el };
+            delete (content as { id?: string }).id;
+            return content;
+          }),
+        });
+        expect(withoutElementIds(copy.doc)).toEqual(withoutElementIds(orig.doc));
+        expect(copy.doc.elements[0].id).not.toBe(orig.doc.elements[0].id);
         expect(copy.finish).toEqual(orig.finish);
         // Cópia profunda (referências independentes)
         expect(copy.doc).not.toBe(orig.doc);

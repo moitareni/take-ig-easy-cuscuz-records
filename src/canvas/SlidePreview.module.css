@@ -1,0 +1,13 @@
+.preview {
+  position: relative;
+  overflow: hidden;
+  pointer-events: none;
+  background-color: var(--c-creme);
+}
+
+.previewInner {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: top left;
+}

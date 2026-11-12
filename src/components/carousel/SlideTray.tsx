@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { ChevronLeft, ChevronRight, Copy, Plus, Trash2 } from 'lucide-react';
 import { CAROUSEL_MAX_SLIDES } from '../../brand/brand';
-import type { EditorCanvasHandle } from '../../canvas/EditorCanvas';
+import { resolveReorderIndex, type DropPosition } from '../../lib/slideOrder';
 import { isSlideEmpty, useCarousel } from '../../store/carouselStore';
 import { useEditor } from '../../store/editorStore';
 import { ConfirmDialog } from '../ConfirmDialog';
@@ -10,14 +10,10 @@ import { IconButton } from '../ui/IconButton';
 import { SlideThumb } from './SlideThumb';
 import styles from './SlideTray.module.css';
 
-export interface SlideTrayProps {
-  stageRef: React.RefObject<EditorCanvasHandle | null>;
-}
-
-/** Teto de segurança: se a captura falhar, os botões nunca ficam travados. */
+/** Teto de segurança: os botões nunca ficam travados se algo falhar. */
 const TRAY_READY_TIMEOUT_MS = 1500;
 
-export const SlideTray: React.FC<SlideTrayProps> = ({ stageRef }) => {
+export const SlideTray: React.FC = () => {
   const slides = useCarousel((s) => s.slides);
   const activeSlideIndex = useCarousel((s) => s.activeSlideIndex);
   const format = useCarousel((s) => s.format);
@@ -31,19 +27,16 @@ export const SlideTray: React.FC<SlideTrayProps> = ({ stageRef }) => {
   const [pendingRemoveIndex, setPendingRemoveIndex] = useState<number | null>(null);
   const [trayReady, setTrayReady] = useState(false);
 
+  // As miniaturas são renderizadas ao vivo a partir do doc: já estão prontas
+  // no primeiro frame. O timeout é só uma rede de segurança.
   useEffect(() => {
+    const raf = requestAnimationFrame(() => setTrayReady(true));
     const timer = setTimeout(() => setTrayReady(true), TRAY_READY_TIMEOUT_MS);
-    return () => clearTimeout(timer);
+    return () => {
+      cancelAnimationFrame(raf);
+      clearTimeout(timer);
+    };
   }, []);
-
-  // A miniatura do slide ativo é a única que `useSlideThumb` gera de saída;
-  // as demais usam o fundo ou o placeholder e não bloqueiam a tira.
-  const handlePreviewReady = useCallback(
-    (index: number) => {
-      if (index === activeSlideIndex) setTrayReady(true);
-    },
-    [activeSlideIndex],
-  );
 
   const atMaxSlides = slides.length >= CAROUSEL_MAX_SLIDES;
   const atMinSlides = slides.length <= 1;
@@ -95,6 +88,18 @@ export const SlideTray: React.FC<SlideTrayProps> = ({ stageRef }) => {
     }
   };
 
+  // Soltar sobre uma miniatura insere ANTES ou DEPOIS dela, conforme o lado
+  // do ponteiro. O slide arrastado nunca "substitui" o alvo (era o que fazia
+  // a página ao lado parecer ter sido movida).
+  const handleReorder = useCallback(
+    (from: number, target: number, position: DropPosition) => {
+      const to = resolveReorderIndex(from, target, position, slides.length);
+      if (to === null) return;
+      reorderSlides(from, to);
+    },
+    [slides.length, reorderSlides],
+  );
+
   return (
     <>
       <nav
@@ -122,12 +127,10 @@ export const SlideTray: React.FC<SlideTrayProps> = ({ stageRef }) => {
                 totalSlides={slides.length}
                 format={format}
                 isActive={index === activeSlideIndex}
-                stageRef={stageRef}
                 onSelect={setActiveSlide}
                 onRequestRemove={handleRequestRemove}
-                onReorder={reorderSlides}
+                onReorder={handleReorder}
                 disabled={!trayReady}
-                onPreviewReady={handlePreviewReady}
               />
             ))}
 

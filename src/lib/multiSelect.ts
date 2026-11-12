@@ -212,16 +212,32 @@ export function buildTransformPatches(elements: El[], results: NodeResult[]): El
     if (!r) return e;
     const base = { x: round2(r.x), y: round2(r.y), rotation: normalizeRotation(r.rotation) };
     const s = Math.abs(r.scaleX);
-    if (e.kind === 'text') return { ...e, ...base, scale: 1, fontSize: Math.round(e.fontSize * s) };
+    if (e.kind === 'text') {
+      return { ...e, ...base, scale: 1, fontSize: Math.round(e.fontSize * s) };
+    }
     return { ...e, ...base, scale: s } as El;
   });
   const final = enforceTextRule(merged);
   const finalById = new Map(final.map((e) => [e.id, e]));
+  const originalById = new Map(elements.map((e) => [e.id, e]));
   return results.flatMap(({ id }) => {
     const e = finalById.get(id);
+    const original = originalById.get(id);
     if (!e) return [];
     const patch: Partial<El> = { x: e.x, y: e.y, rotation: e.rotation, scale: e.scale };
-    if (e.kind === 'text') (patch as Partial<TextEl>).fontSize = e.fontSize;
+    if (e.kind === 'text') {
+      const textPatch = patch as Partial<TextEl>;
+      textPatch.fontSize = e.fontSize;
+      // A largura definida escala junto com a fonte FINAL (depois da regra
+      // Texto ≤ Título), preservando a proporção e as quebras (4.5).
+      // A altura é automática (conteúdo + largura), então não entra no patch.
+      if (original?.kind === 'text') {
+        const ratio = original.fontSize > 0 ? e.fontSize / original.fontSize : 1;
+        if (original.boxWidth !== undefined) {
+          textPatch.boxWidth = Math.max(1, Math.round(original.boxWidth * ratio));
+        }
+      }
+    }
     return [{ id, patch }];
   });
 }

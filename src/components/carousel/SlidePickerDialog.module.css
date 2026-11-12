@@ -82,12 +82,6 @@
   justify-content: center;
 }
 
-.thumbImg {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
 .thumbPlaceholder {
   font-family: var(--font-headline);
   font-size: 18px;

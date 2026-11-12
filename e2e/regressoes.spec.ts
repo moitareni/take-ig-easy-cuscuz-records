@@ -1,5 +1,46 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import { createSingle, goHome, openCarousel, openSingle, waitForHome } from './helpers';
+
+interface TextSnapshot {
+  id: string;
+  boxWidth?: number;
+  fontSize: number;
+  text: string;
+}
+
+/** Elemento de texto do doc (fonte de verdade, sem depender de pixel). */
+async function readText(page: Page): Promise<TextSnapshot> {
+  return page.evaluate(() => {
+    const state = (window as unknown as { __useEditor?: { getState: () => { doc: { elements: unknown[] } } } })
+      .__useEditor!.getState();
+    const el = state.doc.elements.find(
+      (e) => (e as { kind?: string }).kind === 'text',
+    ) as TextSnapshot;
+    return {
+      id: el.id,
+      boxWidth: el.boxWidth,
+      fontSize: el.fontSize,
+      text: el.text,
+    };
+  });
+}
+
+/** Centro do elemento na tela, a partir do nó Konva do palco principal. */
+async function textScreenCenter(page: Page, id: string): Promise<{ x: number; y: number }> {
+  return page.evaluate((eid) => {
+    const Konva = (window as unknown as { Konva: { stages: any[] } }).Konva;
+    const stage = Konva.stages[0];
+    const node = stage.findOne(`#${eid}`);
+    const layer = stage.findOne('Layer');
+    const box = node.getClientRect({ relativeTo: layer });
+    const sheet = document.querySelector('[class*=sheetClip]')!.getBoundingClientRect();
+    const k = sheet.width / 1080;
+    return {
+      x: sheet.left + (box.x + box.width / 2) * k,
+      y: sheet.top + (box.y + box.height / 2) * k,
+    };
+  }, id);
+}
 
 test.describe('Regressões da leva P0', () => {
   test('recarregar após criar e converter para carrossel não quebra a home', async ({ page }) => {
@@ -453,5 +494,274 @@ test.describe('Regressões da leva P0', () => {
     const segmentBox = await borderBlock.getByRole('button', { name: 'Nenhuma' }).boundingBox();
     expect(swatchBox && segmentBox).toBeTruthy();
     expect(Math.abs(swatchBox!.height - segmentBox!.height)).toBeLessThan(3);
+  });
+
+  test('Área de texto: só largura, altura automática, uma única caixa e destaque correto desde a montagem', async ({
+    page,
+  }) => {
+    await openSingle(page);
+    await page.locator('button[title*="Pronto 1"]').first().click();
+    await page.getByRole('button', { name: /Próximo/ }).click();
+    await page.locator('footer button:has-text("Pular (sem enfeites)")').click();
+    await page.locator('footer button:has-text("Pular (sem imagem)")').click();
+    await expect(page.getByRole('heading', { name: /4\./ })).toBeVisible();
+
+    await page.getByRole('button', { name: '+ Título', exact: true }).click();
+    await page
+      .locator('textarea[placeholder="Digite o texto aqui..."]')
+      .fill('SONORIDADE');
+    // Caixa de destaque Barro: a tarja deve acompanhar o texto desde já.
+    await page
+      .getByText('Caixa de destaque')
+      .locator('..')
+      .getByRole('button', { name: 'Barro', exact: true })
+      .click();
+
+    const created = await readText(page);
+    // Durante a criação a área ainda é automática.
+    expect(created.boxWidth).toBeUndefined();
+
+    // Entrar em edição NÃO pode encolher a caixa (bug do texto cortado).
+    await page.mouse.dblclick(...(Object.values(await textScreenCenter(page, created.id)) as [number, number]));
+    const handles = page.locator('[data-handle]');
+    // Só largura: nada de alça vertical/diagonal.
+    await expect(handles).toHaveCount(2);
+    await expect(page.locator('[data-handle="s"]')).toHaveCount(0);
+    await expect(page.locator('[data-handle="se"]')).toHaveCount(0);
+
+    const editorBox = page.locator('[class*="editorBox"]');
+    const textarea = editorBox.locator('textarea');
+    // Regressão da "caixa sólida fantasma": o foco do textarea não desenha
+    // outline nenhum; a única caixa visível é o tracejado da área.
+    await expect
+      .poll(() => textarea.evaluate((el) => getComputedStyle(el).outlineStyle))
+      .toBe('none');
+
+    const beforeHandle = (await editorBox.boundingBox())!;
+    const handle = page.locator('[data-handle="e"]');
+    const hb = (await handle.boundingBox())!;
+    await page.mouse.move(hb.x + hb.width / 2, hb.y + hb.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(hb.x + hb.width / 2 + 70, hb.y + hb.height / 2, { steps: 10 });
+    await page.mouse.up();
+    await page.waitForTimeout(150);
+
+    const afterHandle = (await editorBox.boundingBox())!;
+    expect(afterHandle.width).toBeGreaterThan(beforeHandle.width + 30);
+    const resized = await readText(page);
+    expect(resized.boxWidth).toBeGreaterThan(0);
+    expect(resized).not.toHaveProperty('boxHeight');
+
+    // Com largura definida, digitar mais NÃO alarga a caixa (só quebra linha)
+    // e a ALTURA cresce sozinha (auto-height).
+    await textarea.click();
+    await page.keyboard.press('End');
+    const widthBeforeTyping = (await editorBox.boundingBox())!.width;
+    const heightBeforeTyping = (await editorBox.boundingBox())!.height;
+    await page.keyboard.type(' E UM TEXTO LONGO PARA QUEBRAR LINHA NA AREA');
+    await page.waitForTimeout(200);
+    const afterTyping = (await editorBox.boundingBox())!;
+    expect(Math.abs(afterTyping.width - widthBeforeTyping)).toBeLessThan(3);
+    expect(afterTyping.height).toBeGreaterThan(heightBeforeTyping + 10);
+    const stillResized = await readText(page);
+    expect(stillResized.boxWidth).toBe(resized.boxWidth);
+    expect(stillResized).not.toHaveProperty('boxHeight');
+
+    // Sair da edição: a largura definida é persistida (altura é automática).
+    await page.mouse.click(6, 6);
+    await expect(handles).toHaveCount(0);
+    await page.waitForTimeout(150);
+    const frozen = await readText(page);
+    expect(frozen.boxWidth).toBeGreaterThan(0);
+    expect(frozen).not.toHaveProperty('boxHeight');
+
+    // Reabrir a edição: caixa == largura definida e nenhum clipping horizontal.
+    await page.mouse.dblclick(...(Object.values(await textScreenCenter(page, frozen.id)) as [number, number]));
+    await expect(handles).toHaveCount(2);
+    const scale = await page.evaluate(
+      () => document.querySelector('[class*=sheetClip]')!.getBoundingClientRect().width / 1080,
+    );
+    const expectedOuter = (frozen.boxWidth! + 2 * frozen.fontSize * 0.38) * scale;
+    const reopened = (await editorBox.boundingBox())!;
+    expect(Math.abs(reopened.width - expectedOuter)).toBeLessThan(4);
+    const clipped = await textarea.evaluate((el) => el.scrollWidth - el.clientWidth);
+    expect(clipped).toBeLessThanOrEqual(1);
+
+    await page.mouse.click(6, 6);
+    await expect(page.getByText('Salvo', { exact: true })).toBeVisible({ timeout: 5000 });
+
+    // Reload + reabrir: estado preservado e tarja correta JÁ na montagem do slide.
+    await page.reload();
+    await waitForHome(page);
+    await page.getByRole('button', { name: /^Abrir / }).first().click();
+    await expect(page.getByRole('heading', { name: /1\. Escolha o fundo/ })).toBeVisible();
+    await page.getByRole('button', { name: /4\. Texto/ }).click();
+
+    const persisted = await readText(page);
+    expect(persisted.boxWidth).toBe(frozen.boxWidth);
+    expect(persisted).not.toHaveProperty('boxHeight');
+
+    const highlight = await page.evaluate((id) => {
+      const Konva = (window as unknown as { Konva: { stages: any[] } }).Konva;
+      const group = Konva.stages[0].findOne(`#${id}`);
+      const rect = group?.findOne('Rect');
+      return rect ? { width: rect.width(), height: rect.height() } : null;
+    }, persisted.id);
+    expect(highlight).not.toBeNull();
+    expect(highlight!.width).toBeGreaterThan(200);
+    expect(highlight!.width).toBeCloseTo(
+      persisted.boxWidth! + 2 * persisted.fontSize * 0.38,
+      0,
+    );
+  });
+
+  test('Reordenar páginas no drag & drop só muda a ordem (conteúdo e fundos intactos)', async ({
+    page,
+  }) => {
+    await openCarousel(page);
+    await page.locator('button[title*="Pronto 1"]').first().click();
+
+    // Arte completa na página 1: texto com destaque + logo.
+    await page.getByRole('button', { name: /4\. Texto/ }).click();
+    await page.getByRole('button', { name: '+ Título', exact: true }).click();
+    await page.locator('textarea[placeholder="Digite o texto aqui..."]').fill('SONORIDADE');
+    await page.getByRole('button', { name: /5\. Logo/ }).click();
+    await page.getByRole('button', { name: 'Adicionar Logo com Papel' }).click();
+    await page.getByRole('button', { name: 'Canto Inf. Esq.' }).click();
+
+    // Duas páginas vazias (3 no total, como no relato).
+    await page.getByRole('button', { name: 'Novo slide vazio' }).first().click();
+    await page.getByRole('button', { name: 'Novo slide vazio' }).first().click();
+
+    const readSlides = () =>
+      page.evaluate(() => {
+        const c = (window as unknown as { __useCarousel: { getState: () => { slides: any[] } } })
+          .__useCarousel.getState();
+        return c.slides.map((s) => ({
+          id: s.id as string,
+          bg: s.doc.backgroundId as string | null,
+          els: s.doc.elements.map((e: { id: string }) => e.id) as string[],
+        }));
+      });
+
+    const before = await readSlides();
+    expect(before).toHaveLength(3);
+
+    const thumbs = page.locator('[data-slide-index]');
+    // Arrasta a 3ª página para a METADE DIREITA da 1ª: ela entra DEPOIS,
+    // virando a página 2 (a arte continua na página 1).
+    await thumbs.nth(2).dragTo(thumbs.nth(0), { targetPosition: { x: 52, y: 40 } });
+    await page.waitForTimeout(500);
+
+    const after = await readSlides();
+    expect(after.map((s) => s.id)).toEqual([before[0].id, before[2].id, before[1].id]);
+
+    // Nenhum slide mudou de conteúdo/fundo: só a posição no array.
+    for (const slide of before) {
+      expect(after.find((s) => s.id === slide.id)).toEqual(slide);
+    }
+    expect(after[0].bg).toBe('pronto-1');
+    expect(after[0].els).toHaveLength(2);
+  });
+
+  test('Miniaturas mostram a arte de TODOS os slides ao reabrir o rascunho', async ({ page }) => {
+    await openCarousel(page);
+    await page.locator('button[title*="Pronto 1"]').first().click();
+    await page.getByRole('button', { name: /4\. Texto/ }).click();
+    await page.getByRole('button', { name: '+ Título', exact: true }).click();
+    await page.locator('textarea[placeholder="Digite o texto aqui..."]').fill('SLIDE UM');
+
+    // Segundo slide com outro fundo e outro texto.
+    await page.getByRole('button', { name: 'Novo slide vazio' }).first().click();
+    await page.getByRole('button', { name: /1\. Fundo/ }).click();
+    await page.getByRole('button', { name: 'Fundos Puros' }).click();
+    await page.locator('button[title*="Puro 2"]').first().click();
+    await page.getByRole('button', { name: /4\. Texto/ }).click();
+    await page.getByRole('button', { name: '+ Título', exact: true }).click();
+    await page.locator('textarea[placeholder="Digite o texto aqui..."]').fill('SLIDE DOIS');
+
+    await page.waitForTimeout(600);
+    await goHome(page);
+
+    // Reabrir o rascunho: as duas miniaturas já devem renderizar seus elementos
+    // (antes, só o slide ativo tinha arte; os outros mostravam apenas o fundo).
+    await page.getByRole('button', { name: /^Abrir / }).first().click();
+    await expect(page.getByRole('navigation', { name: 'Tira de slides do carrossel' })).toBeVisible();
+
+    const counts = await page
+      .locator('[data-slide-preview]')
+      .evaluateAll((els) => els.map((el) => Number(el.getAttribute('data-slide-elements'))));
+    expect(counts).toEqual([1, 1]);
+
+    // Cada miniatura desenhou o próprio doc: os canvas não são iguais.
+    await expect
+      .poll(
+        async () => {
+          const urls = await page
+            .locator('[data-slide-preview]')
+            .evaluateAll((els) =>
+              els.map((el) => {
+                const canvas = el.querySelector('canvas');
+                return canvas ? canvas.toDataURL() : '';
+              }),
+            );
+          return new Set(urls.filter(Boolean)).size;
+        },
+        { timeout: 10000 },
+      )
+      .toBe(2);
+  });
+
+  test('Duplicar slide mantém páginas independentes e reordenar não troca conteúdo', async ({
+    page,
+  }) => {
+    await openCarousel(page);
+    await page.locator('button[title*="Pronto 1"]').first().click();
+
+    await page.getByRole('button', { name: /4\. Texto/ }).click();
+    await page.getByRole('button', { name: '+ Título', exact: true }).click();
+    await page.locator('textarea[placeholder="Digite o texto aqui..."]').fill('SLIDE UM');
+
+    // Duplicar: o novo slide tem os MESMOS elementos visuais, mas ids novos.
+    await page.getByRole('button', { name: 'Duplicar slide atual' }).click();
+    await page.getByRole('button', { name: /4\. Texto/ }).click();
+    await page.getByRole('button', { name: /^Selecionar texto/ }).first().click();
+    await page.locator('textarea[placeholder="Digite o texto aqui..."]').fill('SLIDE DOIS');
+
+    const read = () =>
+      page.evaluate(() => {
+        const c = (window as unknown as { __useCarousel: { getState: () => { slides: any[] } } })
+          .__useCarousel.getState();
+        return c.slides.map((s) => ({
+          id: s.id as string,
+          texts: s.doc.elements
+            .filter((e: { kind: string }) => e.kind === 'text')
+            .map((e: { text: string }) => e.text) as string[],
+          elementIds: s.doc.elements.map((e: { id: string }) => e.id) as string[],
+        }));
+      });
+
+    const before = await read();
+    expect(before).toHaveLength(2);
+    const allIds = before.flatMap((s) => s.elementIds);
+    expect(new Set(allIds).size).toBe(allIds.length); // nenhum id compartilhado
+
+    // Ativar o slide 1 não pode remover os elementos do slide 2.
+    await page.getByRole('button', { name: /^Slide 1/ }).click();
+    await page.waitForTimeout(200);
+    const afterActivate = await read();
+    expect(afterActivate.find((s) => s.id === before[0].id)!.texts).toEqual(['SLIDE UM']);
+    expect(afterActivate.find((s) => s.id === before[1].id)!.texts).toEqual(['SLIDE DOIS']);
+
+    // Reordenar continua sendo só posicional.
+    const thumbs = page.locator('[data-slide-index]');
+    await thumbs.nth(1).dragTo(thumbs.nth(0), { targetPosition: { x: 4, y: 40 } });
+    await page.waitForTimeout(400);
+
+    const afterReorder = await read();
+    expect(afterReorder.map((s) => s.id)).toEqual([before[1].id, before[0].id]);
+    for (const slide of before) {
+      expect(afterReorder.find((s) => s.id === slide.id)!.texts).toEqual(slide.texts);
+    }
   });
 });

@@ -1,15 +1,9 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useMemo } from 'react';
 import { Group, Image as KonvaImage, Rect, Text as KonvaText } from 'react-konva';
-import type Konva from 'konva';
 import { canvasBlendOf, getDecoration, getLogo, manifest } from '../assets';
-import {
-  BORDER_PAD,
-  BORDERS,
-  BRAND_EFFECT,
-  COLORS,
-  FONT_BODY,
-  FONT_HEADLINE,
-} from '../brand/brand';
+import { BORDERS, BRAND_EFFECT, COLORS } from '../brand/brand';
+import { measureTextLayout } from '../lib/textLayout';
+import { useFontsReady } from '../lib/useFontsReady';
 import { useImage } from '../lib/useImage';
 import { useUserImage } from '../lib/userImages';
 import type { DecorationEl, El, ImageEl, LogoEl, TextEl } from '../types';
@@ -125,39 +119,49 @@ const ContinuationText: React.FC<{ element: TextEl; offsetX: number }> = ({
   element,
   offsetX,
 }) => {
-  const groupRef = useRef<Konva.Group>(null);
-  const textMeasurerRef = useRef<Konva.Text>(null);
-  const [texture] = useImage(manifest.borderTexture.src);
-
-  const isHeadline = element.style !== 'body';
-  const fontFamily = isHeadline ? FONT_HEADLINE : FONT_BODY;
-  const fontWeight = isHeadline ? '900' : 'bold';
-  const rawText = element.text || ' ';
-  const displayText = element.uppercase ? rawText.toUpperCase() : rawText;
-  const { fontSize, lineHeight, letterSpacing, align } = element;
-  const padX = element.border !== 'none' ? fontSize * BORDER_PAD.x : 0;
-  const padY = element.border !== 'none' ? fontSize * BORDER_PAD.y : 0;
-
-  useEffect(() => {
-    const textNode = textMeasurerRef.current;
-    const groupNode = groupRef.current;
-    if (!textNode || !groupNode) return;
-    const width = textNode.width() + padX * 2;
-    const height = textNode.height() + padY * 2;
-    groupNode.offsetX(width / 2);
-    groupNode.offsetY(height / 2);
-  }, [displayText, fontSize, lineHeight, letterSpacing, padX, padY, element.border]);
+  const [texture] = useImage(element.border !== 'none' ? manifest.borderTexture.src : null);
+  const fontsReady = useFontsReady();
+  const layout = useMemo(
+    () => measureTextLayout(element),
+    [
+      fontsReady,
+      element.text,
+      element.uppercase,
+      element.style,
+      element.fontSize,
+      element.lineHeight,
+      element.letterSpacing,
+      element.align,
+      element.border,
+      element.boxWidth,
+    ],
+  );
 
   const hasBorder = element.border !== 'none';
   const borderConfig = hasBorder ? BORDERS[element.border as keyof typeof BORDERS] : null;
   const textColor = COLORS[element.color as keyof typeof COLORS] ?? COLORS.preto;
+  const wrapped = layout.wrapWidth !== null;
+
+  const textProps = {
+    text: layout.displayText,
+    x: layout.padX,
+    y: layout.padY,
+    fontFamily: layout.fontFamily,
+    fontStyle: layout.fontStyle,
+    fontSize: element.fontSize,
+    lineHeight: element.lineHeight,
+    letterSpacing: element.letterSpacing,
+    align: element.align,
+    ...(wrapped ? { width: layout.wrapWidth ?? undefined, wrap: 'word' } : {}),
+  };
 
   return (
     <Group
-      ref={groupRef}
       x={element.x + offsetX}
       y={element.y}
       rotation={element.rotation}
+      offsetX={layout.outerWidth / 2}
+      offsetY={layout.outerHeight / 2}
       scaleX={1}
       scaleY={1}
       listening={false}
@@ -165,18 +169,15 @@ const ContinuationText: React.FC<{ element: TextEl; offsetX: number }> = ({
       {hasBorder && borderConfig && (
         <Group
           clipFunc={(ctx) => {
-            const t = textMeasurerRef.current;
-            const w = (t ? t.width() : 100) + padX * 2;
-            const h = (t ? t.height() : 50) + padY * 2;
-            ctx.rect(0, 0, w, h);
+            ctx.rect(0, 0, layout.outerWidth, layout.outerHeight);
           }}
           listening={false}
         >
           <Rect
             x={0}
             y={0}
-            width={textMeasurerRef.current ? textMeasurerRef.current.width() + padX * 2 : 100}
-            height={textMeasurerRef.current ? textMeasurerRef.current.height() + padY * 2 : 50}
+            width={layout.outerWidth}
+            height={layout.outerHeight}
             fill={borderConfig.color}
             listening={false}
           />
@@ -185,8 +186,8 @@ const ContinuationText: React.FC<{ element: TextEl; offsetX: number }> = ({
               image={texture}
               x={0}
               y={0}
-              width={textMeasurerRef.current ? textMeasurerRef.current.width() + padX * 2 : 100}
-              height={textMeasurerRef.current ? textMeasurerRef.current.height() + padY * 2 : 50}
+              width={layout.outerWidth}
+              height={layout.outerHeight}
               globalCompositeOperation="soft-light"
               opacity={borderConfig.textureOpacity}
               listening={false}
@@ -196,15 +197,7 @@ const ContinuationText: React.FC<{ element: TextEl; offsetX: number }> = ({
       )}
       {element.brandEffect && (
         <KonvaText
-          text={displayText}
-          x={padX}
-          y={padY}
-          fontFamily={fontFamily}
-          fontStyle={fontWeight}
-          fontSize={fontSize}
-          lineHeight={lineHeight}
-          letterSpacing={letterSpacing}
-          align={align}
+          {...textProps}
           fill={BRAND_EFFECT.strokeColor}
           stroke={BRAND_EFFECT.strokeColor}
           strokeWidth={BRAND_EFFECT.strokeOutside * 2}
@@ -216,20 +209,7 @@ const ContinuationText: React.FC<{ element: TextEl; offsetX: number }> = ({
           listening={false}
         />
       )}
-      <KonvaText
-        ref={textMeasurerRef}
-        text={displayText}
-        x={padX}
-        y={padY}
-        fontFamily={fontFamily}
-        fontStyle={fontWeight}
-        fontSize={fontSize}
-        lineHeight={lineHeight}
-        letterSpacing={letterSpacing}
-        align={align}
-        fill={textColor}
-        listening={false}
-      />
+      <KonvaText {...textProps} fill={textColor} listening={false} />
     </Group>
   );
 };

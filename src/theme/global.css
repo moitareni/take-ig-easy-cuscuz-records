@@ -8,14 +8,16 @@
   padding: 0;
 }
 
+/* Realce padrão da marca; quem está sobre a arte (ex.: edição de texto)
+   sobrescreve as variáveis com a cor que contrasta com o fundo do post. */
 ::selection {
-  background-color: var(--c-amarelo);
-  color: var(--c-preto);
+  background-color: var(--selection-bg, var(--c-amarelo));
+  color: var(--selection-fg, var(--c-preto));
 }
 
 ::-moz-selection {
-  background-color: var(--c-amarelo);
-  color: var(--c-preto);
+  background-color: var(--selection-bg, var(--c-amarelo));
+  color: var(--selection-fg, var(--c-preto));
 }
 
 @supports not selector(::-webkit-scrollbar) {
