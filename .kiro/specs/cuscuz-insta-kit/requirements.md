@@ -1,5 +1,32 @@
 # Documento de Requisitos — Cuscuz Records Insta Kit
 
+> **Auditoria de implementação — 12/11/2026 (prevalece sobre todo o histórico abaixo).**
+> Esta revisão confrontou requisitos, código e testes da árvore atual. `AGENTS.md`
+> continua a fonte de verdade operacional; este bloco corrige as contradições que
+> ainda restavam nas revisões de 10–11/11.
+>
+> - A arquitetura ativa é home → rascunho ativo → editor: `App.tsx` só renderiza
+>   `boot`, `HomeScreen` ou `EditorScreen`. `ModeSelector`, abertura direta no
+>   editor e `persist` do Zustand em `localStorage` são históricos, não requisitos
+>   vigentes. Estado de sessão fica em `useEditor`/`useCarousel`; `DraftBody`,
+>   metadados, capas e imagens vivem no IndexedDB schema v2.
+> - A largura de texto é o único tamanho de área persistido (`TextEl.boxWidth`).
+>   `boxHeight` não existe: sem largura há área automática; após sair da edição a
+>   largura é congelada; com largura definida o texto quebra linha e a altura é
+>   sempre derivada do conteúdo. A edição tem somente as alças laterais `e` e `w`.
+> - A Etapa 6 usa cartões com checkbox real e clique no cartão. Papel e Craquelado
+>   têm o botão `Prévia da textura`, montado apenas quando aberto; não há
+>   `<details>`, `summary`, botões Ligado/Desligado nem `resetFinish()`. Quando
+>   todos os acabamentos estão ativos, `Ativar todas` troca para `Desativar todas`;
+>   ambas as ações preservam parâmetros e geram um único passo de undo.
+> - A persistência sanitiza rascunhos de carrossel antes de usá-los: deduplica ids
+>   de elementos entre slides e normaliza a posse de crossover. Crossover e a
+>   reordenação estão especificados de forma normativa na auditoria da spec
+>   `carousel-posts`; estas garantias também se aplicam aos slides do editor comum.
+> - Verificação desta árvore: `npm run typecheck`, build e Playwright passaram;
+>   Vitest executou **215 testes em 23 arquivos**. A suíte e2e tem **90 execuções**
+>   desktop/mobile (**87 passed / 3 skipped** condicionais).
+
 > **Leva 4 (11/11/2026) — o que prevalece**
 > - **Passo 6 · Textura**: o botão **"Restaurar padrão"** e a action `resetFinish()` foram **removidos**; "Ativar todas"/"Desativar todas" são o único caminho para ligar/desligar os três acabamentos de uma vez (um único passo de undo, preservando opacidades/intensidade). Ver `AGENTS.md` §2.8.
 > - **Log "Na folha"** (Passos 2, 3 e 4): passa a usar o componente único `components/ui/ElementListRow.tsx` — **a caixa retangular inteira é clicável** para selecionar (menos a lixeira, que é irmã do botão e só exclui); a numeração `"1. ..."` deu lugar a um **ponto de lista personalizado** em Enfeites e Textos; Imagens mantêm miniatura + nome, sem ponto. Ver `AGENTS.md` §2.10 e §2.15.
@@ -50,7 +77,7 @@
 > | 5.10, 5.11, 8.8 (`FONT_SIZE_MAX = 320` para todo texto) | Corpo `BODY_FONT_SIZE_MAX = 320`; título `HEADING_FONT_SIZE_MAX = 4000` (Leva 1) |
 > | 11.5 (seletor de formato sempre no cabeçalho) | Seletor no painel do Passo 1, **apenas no post único**; carrossel é somente leitura (Leva 1) |
 > | 2.1–2.3 (nomes provisórios dos enfeites) | 12 labels padronizados via `DECOR_OVERRIDES`; `id`s preservados (Leva 2) |
-> | 7 (prévias de textura sempre visíveis) | Prévias em `<details>` + botão "Ativar todas" (Leva 2) |
+> | 7 (prévias de textura sempre visíveis) | Cartões compactos; prévia abre por `Prévia da textura` e só monta quando aberta; "Ativar todas" alterna para "Desativar todas" |
 >
 > **Novos requisitos:** 12 (home/rascunhos/confiança) e 13 (ajustes de UX da Leva 2),
 > ao final deste documento.
@@ -379,8 +406,8 @@ O **Cuscuz Records Insta Kit** é uma aplicação web estática (React 18 + Type
 2. WHEN `drafts.length === 0 && listStatus === 'ready'`, THEN THE App SHALL exibir a criação **apenas** dentro do quadro de rascunhos (`+ Criar novo`, `CreateDraftDropdown`) e ocultar o equivalente do header; THE App SHALL manter "Baixar backup" e, em `listStatus !== 'ready'`, manter o gatilho do header como saída. O menu SHALL oferecer "Post único" e "Carrossel" com os mesmos ícones/dicas do `ModeDropdown` do editor.
 3. THE App SHALL oferecer o espelhamento do fundo na `BackgroundMirrorToolbar` do dock direito, com `aria-label` "Espelhar fundo ↔" / "Espelhar fundo ↕" e estado `active`, visível quando `step === 0`, há fundo escolhido e nenhum elemento selecionado; THE App SHALL remover o card "Opções do Fundo" do painel, mantendo os controles de corte 1:1 ("Corte vertical", "Topo", "Centro", "Base") como bloco inline.
 4. THE App SHALL permitir renomear o projeto clicando no `<h1>` do Header: o nome vira `<input aria-label="Nome do projeto">`; Enter/blur confirma, `Escape` cancela, e `renameActiveDraft()` SHALL atualizar `activeMeta` com `titleSource: 'user'`, gravar `saveDraftRecord` e transmitir `drafts-changed` (o autosave não pode sobrescrever o nome).
-5. THE App SHALL oferecer "Ativar todas" na Etapa 6 via `enableAllFinishes()` — um único `set`, um único passo de undo, preservando opacidades/intensidade — e SHALL desabilitá-lo quando os três acabamentos já estiverem ligados.
-6. THE App SHALL manter as prévias de papel amassado e Craquelado fechadas por padrão em `<details>/<summary>` ("Ver prévia da textura"), montando o `PreviewImage` somente quando abertas; `summary:focus-visible` SHALL receber o outline verde.
+5. THE App SHALL oferecer "Ativar todas" na Etapa 6 via `enableAllFinishes()` — um único `set`, um único passo de undo, preservando opacidades/intensidade — e, quando os três acabamentos já estiverem ligados, SHALL trocar o mesmo botão para "Desativar todas", chamando `disableAllFinishes()` com as mesmas garantias.
+6. THE App SHALL manter as prévias de papel amassado e Craquelado fechadas por padrão e montar o `PreviewImage` somente quando abertas pelo botão "Prévia da textura". O botão aparece no hover/foco do cartão e sempre em telas de toque, sem alternar o acabamento.
 7. THE App SHALL aplicar `scrollbar-color: var(--c-amarelo-quente) var(--c-surface-muted)` e `scrollbar-width: thin` em `html`, mantendo as regras `::-webkit-scrollbar*` (inclusive `:active` e `-corner`) e `scrollbar-gutter: stable` nos containers de rolagem.
 8. THE App SHALL usar os 12 labels padronizados dos enfeites em Title Case (ex.: "Arabesco floral", "Faixa de espinhos", "Tocador retrô", "Janela retrô"), definidos em `DECOR_OVERRIDES`; THE App SHALL **preservar todos os `id`s**, pois estão gravados nos `Doc` dos rascunhos e `sanitize()` descarta enfeites com `id` desconhecido.
 9. THE App SHALL manter `e2e/helpers.ts` com `openCreateMenu()` / `createSingle()` / `pickCarousel()` / `createCarousel()` sobre o gatilho `+ Criar novo` (`create-draft-trigger`) e `waitForHome()` independente do estado da lista, garantindo que nenhuma spec quebre com a mudança do item 2.

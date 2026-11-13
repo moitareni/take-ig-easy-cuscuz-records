@@ -1,5 +1,36 @@
 # Documento de Design Técnico — Cuscuz Records Insta Kit
 
+> **Auditoria de implementação — 12/11/2026 (prevalece sobre todo o histórico abaixo).**
+> O design em execução não é o plano inicial baseado em `localStorage`. A aplicação
+> inicia em `App.tsx` no estado `boot`, libera a home após `bootDrafts()` e só monta
+> o editor com um rascunho ativo. `src/lib/drafts/` persiste `DraftMeta` e
+> `DraftBody` nos stores `drafts`/`documents`, capas WebP em `covers`, binários em
+> `images` e marcadores em `meta`; `useEditor`/`useCarousel` são stores de sessão.
+> Autosave usa uma cadeia serializada, debounce de 450 ms, lock por aba e
+> `BroadcastChannel`.
+>
+> Correções normativas ao desenho histórico:
+>
+> - `TextEl` só possui `boxWidth?`; `boxHeight` foi removido pelo sanitizador. A
+>   medição síncrona por `measureTextLayout` é a fonte de geometria do texto, da
+>   tarja e da edição in-place. A altura nunca é uma entrada persistida.
+> - Os acabamentos são o `FinishState` por post/slide e ficam desligados por
+>   padrão. `enableAllFinishes()` e `disableAllFinishes()` são as únicas ações em
+>   lote; `resetFinish()` não existe.
+> - A tira de slides não captura `Stage` e não usa `useSlideThumb`, cache de
+>   sessão ou `toDataURL`. `SlidePreview` é uma miniatura Konva, somente leitura,
+>   renderizada ao vivo a partir de cada `doc`/`finish`, com supersampling e
+>   `React.memo`; por isso um slide nunca visitado já aparece completo ao reabrir.
+> - `loadSlideIntoEditor()` fixa a identidade do slide carregado. Atualizações
+>   subsequentes são gravadas pelo `id`, não pelo índice; uma poda externa de
+>   crossover resincroniza apenas `doc`/seleção e preserva etapa e histórico.
+> - Persistência de carrossel normaliza crossover e deduplica ids antes do uso.
+>   O modelo de propriedade, as regras de cópia e a reordenação posicional estão
+>   definidos na auditoria de `carousel-posts/design.md`.
+>
+> A auditoria executou `typecheck`, build, Vitest (**215/23**) e Playwright
+> (**87 passed / 3 skipped**, 90 execuções).
+
 > **Leva 4 (11/11/2026) — o que prevalece**
 > - **Passo 6 · Textura**: "Restaurar padrão" e `resetFinish()` **removidos** do `TextureStep.tsx` e de `editorStore.ts`; só `enableAllFinishes()`/`disableAllFinishes()` (um `set` cada). Ver `AGENTS.md` §2.8.
 > - **Log "Na folha"**: novo `components/ui/ElementListRow.tsx` (+ `.module.css`) usado por `DecorationStep`, `ImageStep` e `TextStep`. O `<button>` de seleção cobre a caixa toda (`padding-right` reserva a lixeira); a lixeira é um `<span>` irmão posicionado à direita, então excluir nunca seleciona. `bullet` é opcional (true em Enfeites/Textos, false em Imagens, que usam `leading` com `PreviewImage`). As linhas ganham `.elementList` em `StepPanel.module.css`; os estilos órfãos `.row*`/`.rowLabel` saíram de `ImageStep.module.css`. Ver `AGENTS.md` §2.10 e §2.15.
@@ -697,11 +728,11 @@ idempotente, guiada por marcador em `META_STORE`, e **não apaga** as chaves.
 
 | Componente | Papel |
 |---|---|
-| `components/ui/PreviewImage.tsx` | Prévia com skeleton/spinner temático; estados `empty/loading/loaded/error` escopados por `src`; variantes `compact`/`full`; `onStatusChange`. Usado em `ThumbGrid`, `TextureStep`, `HomeScreen`, `SlideThumb`, `SlidePickerDialog`, `ImageStep`. |
+| `components/ui/PreviewImage.tsx` | Prévia com skeleton/spinner temático; estados `empty/loading/loaded/error` escopados por `src`; variantes `compact`/`full`; `onStatusChange`. Usado em `ThumbGrid`, `TextureStep`, `HomeScreen` e `ImageStep`. A tira e o seletor de slides usam `SlidePreview` vivo, não `PreviewImage`. |
 | `components/ui/HelpTip.tsx` | Balão `(?)` com `role="tooltip"`, hover/foco/toque, `Escape` e clique fora. |
 | `components/BackgroundMirrorToolbar.tsx` | Espelhamento do fundo no dock (reusa `AlignToolbar.module.css`); visível só com `step === 0`, fundo escolhido e sem seleção. |
 | `components/carousel/SlideTray.tsx` | Import estático, `trayReady`, altura reservada (`min-height: 120px`), botões desativados + loading com timeout de 1,5 s. |
-| `components/carousel/SlideThumb.tsx` | `disabled`, `onPreviewReady`, fallback "Vazio"/spinner conforme o slide ativo. |
+| `components/carousel/SlideThumb.tsx` | DnD interno tipado, selo ordinal, exclusão e `SlidePreview` vivo; não há `onPreviewReady`, fallback "Vazio" nem spinner de captura. |
 | `screens/HomeScreen.tsx` | `showHeaderCreate = drafts.length > 0 \|\| listStatus !== 'ready'`; `HelpTip` no título da seção; capa contida em `.continueCover { position: relative }`. |
 | `components/Header.tsx` | Nome editável inline (`renameActiveDraft`), selo de autosave, `FormatGlyph`, dropdown de modo. |
 
@@ -713,15 +744,15 @@ idempotente, guiada por marcador em `META_STORE`, e **não apaga** as chaves.
 - `scripts/build-assets.mjs`: `DECOR_OVERRIDES` com `label` para os 12 enfeites;
   `id`s, `src`, `thumb`, `blend` e `fullSheet` inalterados. `npm run assets` reescreve
   `src/assets-manifest.json` e `public/brand/`; as pastas raiz permanecem intocáveis.
-- `theme/global.css`: `scrollbar-color`/`scrollbar-width` em `html`,
-  `::-webkit-scrollbar*` completo, `summary:focus-visible` no seletor de foco.
+- `theme/global.css`: `scrollbar-color`/`scrollbar-width` em `html` e
+  `::-webkit-scrollbar*` completo. A textura usa botão acessível de prévia, não `summary`.
 - `theme/tokens.css`: `--duration-loading: 0.9s`.
-- `steps/TextureStep.tsx`: `enableAllFinishes()` (um `set` = um undo) e `<details>` por prévia.
+- `steps/TextureStep.tsx`: cartões compactos com checkbox, `enableAllFinishes()`/`disableAllFinishes()` (um `set` = um undo) e botão de prévia por cartão.
 - `steps/BackgroundStep.tsx`: seletor de formato só no post único; corte 1:1 inline.
 
 ### Verificação
 
-`npm run typecheck` · `npm run test` (159 testes / 15 arquivos) · `npm run build` ·
-`npm run e2e` (**63 passed / 3 skipped**, 66 testes em 2 projetos; Playwright serve
+Auditoria de 12/11/2026: `npm run typecheck` · `npm run test` (**215 testes / 23 arquivos**) · `npm run build` ·
+`npm run e2e` (**87 passed / 3 skipped**, 90 execuções em 2 projetos; Playwright serve
 `dist/` na 4173 — **build obrigatório antes do e2e**).
 Regressões das duas levas em `e2e/regressoes.spec.ts` (7 casos × 2 projetos).

@@ -1,5 +1,23 @@
 # Plano de Implementação — Carrossel de Posts para Instagram
 
+> **Auditoria de encerramento — 12/11/2026.** As tasks abaixo registram a
+> implementação inicial; não são backlog ativo. A revisão de código, testes e
+> specs confirmou concluídas as correções posteriores de posse explícita de
+> crossover, gravação por id do slide, poda/resync após reordenação, duplicação
+> com ids novos (sem cópias), miniaturas vivas e proteção da logo própria.
+>
+> A implementação que prevalece está em `carouselStore.ts`, `crossover.ts`,
+> `SlidePreview.tsx`, `SlideTray.tsx` e `SlideThumb.tsx`; não criar de volta
+> `ModeSelector`, `useSlideThumb`, cache de miniatura, captura `toDataURL` ou
+> persistência do store em `localStorage`. A reordenação aceita somente o MIME
+> interno de slide e é posicional, sem reconciliação de crossover.
+>
+> **Verificação reproduzida:** `npm run typecheck`, `npm run build`, Vitest
+> (**215 testes / 23 arquivos**) e Playwright (**87 passed / 3 skipped**, 90
+> execuções). As regressões específicas estão em `reorderCrossover.test.ts`,
+> `crossoverOwnershipBugs.test.ts`, `reorderImmutability.test.ts`,
+> `carouselIntegrity.test.ts`, `slideOrder.test.ts` e `e2e/regressoes.spec.ts`.
+
 > **Leva 4 (11/11/2026) — o que prevalece**
 > Nenhuma task nova de carrossel: as correções desta leva atingem o **editor de 6
 > etapas compartilhado** e, por isso, valem para todos os slides. Registradas em

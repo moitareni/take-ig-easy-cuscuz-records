@@ -764,4 +764,78 @@ test.describe('Regressões da leva P0', () => {
       expect(afterReorder.find((s) => s.id === slide.id)!.texts).toEqual(slide.texts);
     }
   });
+
+  test('Animação GSAP de drag & drop: ghost, abertura de espaço e pouso ease-out mesmo dropado longe', async ({
+    page,
+  }) => {
+    await openCarousel(page);
+    await page.getByRole('button', { name: 'Novo slide vazio' }).first().click();
+    await page.getByRole('button', { name: 'Novo slide vazio' }).first().click();
+
+    const thumbs = page.locator('[data-slide-index]');
+    await expect(thumbs).toHaveCount(3);
+
+    const beforeIds = await thumbs.evaluateAll((els) =>
+      els.map((el) => el.getAttribute('data-slide-id')),
+    );
+
+    const firstBox = (await thumbs.nth(0).boundingBox())!;
+    const thirdBox = (await thumbs.nth(2).boundingBox())!;
+
+    // Inicia o arraste no slide 3 e move até acima da tira (fora da área de overflow)
+    // alinhado horizontalmente com o início do slide 1.
+    await page.mouse.move(thirdBox.x + thirdBox.width / 2, thirdBox.y + thirdBox.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(firstBox.x + 8, firstBox.y - 160, { steps: 14 });
+    await page.waitForTimeout(180);
+
+    const ghost = page.locator('[class*="dropGhost"]');
+    const floating = page.locator('[class*="floatingDragCard"]');
+    await expect(ghost).toBeVisible();
+    await expect(floating).toBeVisible();
+
+    const duringDrag = await page.evaluate(() => {
+      const ghostEl = document.querySelector('[class*="dropGhost"]') as HTMLElement | null;
+      const floatEl = document.querySelector('[class*="floatingDragCard"]') as HTMLElement | null;
+      const firstThumb = document.querySelector('[data-slide-index="0"]') as HTMLElement | null;
+      const listEl = document.querySelector('[class*="thumbList"]') as HTMLElement | null;
+      const parseTx = (el: HTMLElement | null) => {
+        if (!el) return 0;
+        const m = new DOMMatrixReadOnly(getComputedStyle(el).transform);
+        return m.m41;
+      };
+      return {
+        ghostOpacity: ghostEl ? Number(getComputedStyle(ghostEl).opacity) : 0,
+        floatRect: floatEl ? floatEl.getBoundingClientRect() : null,
+        listRect: listEl ? listEl.getBoundingClientRect() : null,
+        firstShiftX: parseTx(firstThumb),
+      };
+    });
+
+    expect(duringDrag.ghostOpacity).toBeGreaterThan(0.8);
+    expect(duringDrag.floatRect).not.toBeNull();
+    // Portal flutuante fora do recorte da tira (acima de listRect.top)
+    expect(duringDrag.floatRect!.top).toBeLessThan(duringDrag.listRect!.top - 60);
+    // Slide 1 abriu espaço deslizando para a direita
+    expect(duringDrag.firstShiftX).toBeGreaterThan(20);
+
+    // Solta longe da tira: o card flutuante deve pousar com ease-out e limpar tudo ao terminar
+    await page.mouse.up();
+    await expect(floating).toHaveCount(0, { timeout: 2000 });
+    await expect(ghost).toHaveCount(0, { timeout: 2000 });
+
+    const afterState = await page.evaluate(() => {
+      const listEl = document.querySelector('[class*="thumbList"]');
+      const allThumbs = Array.from(document.querySelectorAll<HTMLElement>('[data-slide-index]'));
+      return {
+        motionActive: listEl?.getAttribute('data-motion-active') ?? null,
+        ids: allThumbs.map((el) => el.getAttribute('data-slide-id')),
+        opacities: allThumbs.map((el) => Number(getComputedStyle(el).opacity)),
+      };
+    });
+
+    expect(afterState.motionActive).toBeNull();
+    expect(afterState.ids).toEqual([beforeIds[2], beforeIds[0], beforeIds[1]]);
+    expect(afterState.opacities).toEqual([1, 1, 1]);
+  });
 });

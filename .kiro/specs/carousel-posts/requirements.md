@@ -1,5 +1,58 @@
 # Documento de Requisitos: Carrossel de Posts para Instagram
 
+> **Auditoria de implementação — 12/11/2026 (prevalece sobre todo o histórico abaixo).**
+> Esta é a especificação normativa do carrossel que está em produção. Ela substitui
+> os trechos antigos que descrevem `ModeSelector`, persistência por `localStorage`,
+> cache/captura de miniaturas ou crossover sem dono explícito.
+>
+> **Persistência, sessão e prévias**
+>
+> - O carrossel é um `CarouselDraftBody` no IndexedDB schema v2. A home cria e
+>   abre rascunhos; `useCarousel` e `useEditor` são somente sessão. `main.tsx`
+>   sincroniza o editor com o carrossel, e `updateActiveSlide()` encontra primeiro
+>   o `editingSlideId`, corrigindo `activeSlideIndex` defasado. Fundo, acabamento
+>   e elementos nunca podem ser gravados no slide errado.
+> - `SlideTray` é importada estaticamente e reserva altura; fica indisponível até
+>   o primeiro `requestAnimationFrame` (timeout de segurança de 1,5 s).
+>   `SlidePreview`, também usado pelo seletor de conversão, desenha todos os
+>   `doc`/`finish` em Konva de modo somente leitura com `React.memo`. Não há
+>   `useSlideThumb`, `PreviewImage`, cache, hash, debounce nem `toDataURL` como
+>   fonte de miniatura. Slides nunca abertos devem aparecer completos de imediato.
+>
+> **Contrato de crossover (dono e cópia)**
+>
+> - Cada elemento real pertence a um único slide e tem id único entre slides. Se
+>   ele sangra, o dono é `crossover: true` sem `crossFrom`; a materialização na
+>   vizinha é uma cópia com o mesmo id, `crossover: true` e
+>   `crossFrom: <id do slide dono>`. Somente o dono gera, atualiza ou remove
+>   cópias. A cópia espelha edição apenas para o dono declarado na vizinha do lado
+>   correto (`x <= postW / 2` aponta à anterior; à direita, à seguinte).
+> - Excluir uma cópia exclui a arte dona e suas cópias, mas jamais um elemento real
+>   homônimo de outra página. Uma cópia legítima arrastada para dentro torna-se
+>   arte da página atual; uma cópia que não existia no `prevActiveDoc` é inválida
+>   e descartada, portanto não pode reivindicar/apagar arte alheia. A posição
+>   **anterior** da cópia determina o lado do dono durante essa decisão.
+> - `sanitizeDraftBody()` executa `dedupeSlideElementIds()` e
+>   `normalizeCrossoverOwnership()`: adota pares legados sem `crossFrom`, descarta
+>   cópias órfãs e limpa marca de sangria inválida. Uma cópia de logo nunca
+>   substitui nem é desenhada sobre uma logo própria da página vizinha.
+>
+> **Reordenação**
+>
+> - `reorderSlides` é estritamente posicional: move os mesmos objetos `SlideData`
+>   no array e não reconcilia/materializa crossovers. A única limpeza é
+>   `pruneOrphanCrossoverCopies`; se ela alterar o slide que está no palco,
+>   `resyncEditorDoc` atualiza o canvas sem trocar etapa nem criar undo.
+> - Soltar à esquerda/direita da miniatura insere antes/depois (`resolveReorderIndex`).
+>   O DnD aceita apenas `application/x-cuscuz-slide-index`; arquivos, texto e
+>   outros arrastes externos não podem reordenar os slides.
+>
+> **Verificação:** `typecheck`, build e e2e passaram nesta árvore; Vitest executou
+> **215 testes em 23 arquivos** e Playwright **87 passed / 3 skipped** (90
+> execuções desktop/mobile). Os contratos acima são cobertos por
+> `reorderCrossover`, `reorderImmutability`, `crossoverOwnershipBugs`,
+> `carouselIntegrity`, `slideOrder` e `regressoes`.
+
 > **Leva 4 (11/11/2026) — o que prevalece**
 > As mudanças desta leva são no **editor de 6 etapas compartilhado** pelos slides,
 > portanto valem para cada slide do carrossel. Fonte de verdade: `AGENTS.md`.
@@ -81,11 +134,11 @@ O modo **Post único** existente não sofre nenhuma alteração.
 - **IndexedDB**: banco de dados do navegador onde os blobs de imagens do usuário são armazenados.
 - **GC de Imagens**: processo de coleta de blobs órfãos no IndexedDB, executado no boot.
 - **Toast**: notificação temporária exibida na interface ao usuário.
-- **PixelRatio de Miniatura**: razão de escala usada ao capturar o Stage do Konva para gerar a miniatura em baixa resolução.
+- **Supersampling de Miniatura**: `SlidePreview` desenha cada página em largura interna fixa de 240 px e a escala visualmente; não captura o Stage.
 - **Diálogo de Troca de Modo**: caixa de seleção exibida ao trocar do Modo Carrossel para o Modo Post Único, que lista os slides disponíveis com miniaturas e permite escolher qual manter ou começar do zero.
 - **Zona de Sangria**: faixa visual de ~80px nas bordas laterais da folha (direita quando há slide seguinte; esquerda quando há slide anterior), exibida quando um elemento é arrastado próximo a ela, indicando que o elemento pode atravessar para o slide vizinho.
-- **Elemento Crossover**: elemento posicionado entre dois slides adjacentes (marcado com `crossover: true` ou que ultrapassa a borda lateral `x < 0` ou `x > postWidth`) que aparece em ambos os slides com 100% de opacidade e pode ser selecionado, movido, redimensionado, rotacionado, espelhado, editado ou excluído a partir de **qualquer uma das páginas** que compartilha o elemento.
-- **Continuação Visual Sincronizada**: representação ativa e interativa de um Elemento Crossover sincronizada entre os `doc.elements` dos slides adjacentes (com o mesmo `id` e coordenada horizontal trasladada em `-postWidth` no slide seguinte e `+postWidth` no slide anterior, mantendo `opacity: 1` e demais propriedades idênticas). Garante manipulação bidirecional em ambas as páginas e preservação do elemento caso qualquer uma das páginas seja escolhida ao converter de Carrossel para Post Único.
+- **Elemento Crossover**: arte de um slide que sangra para a vizinha. O elemento real é o **dono** (`crossover: true`, sem `crossFrom`); a representação adjacente é uma **cópia** com o mesmo `id`, coordenada trasladada e `crossFrom` igual ao id do slide dono. A cópia é interativa, mas só pode espelhar de volta para esse dono no lado correto.
+- **Continuação Visual Sincronizada**: cópia materializada no `doc.elements` da vizinha, ou `CrossoverMirrorNode` de fallback enquanto ela ainda não existe. Dono e cópia preservam atributos visuais; a propriedade explícita impede sobrescrever um homônimo real ou uma logo própria.
 
 ---
 
@@ -313,13 +366,13 @@ O modo **Post único** existente não sofre nenhuma alteração.
 
 #### Critérios de Aceitação
 
-1. THE App SHALL gerar cada miniatura de slide em no máximo 500ms a partir do momento em que o slide se torna ativo ou é modificado.
+1. THE App SHALL montar cada miniatura a partir do próprio `Doc`/`FinishState` já no primeiro frame, inclusive para slides que a usuária ainda não abriu.
 
-2. THE App SHALL cachear a miniatura de cada slide e reutilizar o cache enquanto o `Doc` e o `FinishState` do slide não forem modificados.
+2. THE App SHALL usar `React.memo` em `SlidePreview`: enquanto referências de um slide não mudam, sua miniatura não redesenha por alterações no slide ativo. Nenhuma imagem serializada deve ser mantida como cache de miniatura.
 
-3. WHEN a usuária está editando o Slide Ativo de forma contínua (ex.: arrastando um slider), THE App SHALL atualizar a miniatura com debounce de no mínimo 400ms para não bloquear o canvas principal.
+3. WHEN a usuária edita o Slide Ativo continuamente, THE App SHALL manter a tira responsiva renderizando o preview vivo correspondente, sem `toDataURL`, captura de `Stage` ou debounce artificial de 400 ms.
 
-4. THE App SHALL exibir a Tira de Miniaturas inteira no primeiro frame (import estático, altura reservada de 120 px) e gerar as miniaturas sob demanda pelo `useSlideThumb` (`isActive && isVisible`, debounce 400 ms, cache por `slideId`); enquanto não há prévia, cada miniatura SHALL mostrar o `PreviewImage` em loading, sem "Vazio" piscando.
+4. THE App SHALL exibir a Tira de Miniaturas inteira no primeiro frame (import estático, altura reservada de 120 px) e renderizar cada miniatura ao vivo por `SlidePreview` (Konva somente leitura, `React.memo`, supersampling). Não há `useSlideThumb`, captura, cache, debounce nem placeholder de slide nunca visitado.
 
 ---
 
@@ -376,15 +429,15 @@ O modo **Post único** existente não sofre nenhuma alteração.
 
 **User Story:** Como usuária, quero a barra de slides disponível imediatamente e sem controles que não funcionam.
 
-**Arquivos:** `src/screens/EditorScreen.tsx`, `src/components/carousel/SlideTray.tsx`, `src/components/carousel/SlideThumb.tsx`, `src/canvas/hooks/useSlideThumb.ts`, `src/components/ui/PreviewImage.tsx`, `src/steps/BackgroundStep.tsx`, `src/steps/TextureStep.tsx`, `src/store/editorStore.ts`.
+**Arquivos:** `src/screens/EditorScreen.tsx`, `src/components/carousel/SlideTray.tsx`, `src/components/carousel/SlideThumb.tsx`, `src/canvas/SlidePreview.tsx`, `src/steps/BackgroundStep.tsx`, `src/steps/TextureStep.tsx`, `src/store/editorStore.ts`.
 
 #### Critérios de Aceitação
 
 1. THE App SHALL renderizar a `SlideTray` no primeiro frame do Modo Carrossel (import estático, sem `React.lazy`/`Suspense`), com `min-height: 120px` e `flex: 0 0 auto` para não deslocar a folha.
 2. WHILE `trayReady === false`, THE App SHALL manter todos os botões da tira desativados, `aria-busy="true"` no `<nav>` e o texto "Preparando as miniaturas..." com `role="status"`.
-3. THE App SHALL liberar os botões quando o `PreviewImage` do slide ativo reportar `loaded`/`error`, **ou** após 1,5 s de segurança, de modo que uma falha de captura nunca deixe a tira travada.
-4. THE App SHALL exibir em cada miniatura o `PreviewImage` (spinner temático) e o selo ordinal; THE App SHALL não exibir `alt` cru nem o texto "Vazio" piscando no slide ativo.
+3. THE App SHALL liberar os botões no primeiro `requestAnimationFrame`, com timeout de 1,5 s como rede de segurança; como a miniatura é viva, não há espera de captura nem evento `loaded` do slide ativo.
+4. THE App SHALL exibir em cada miniatura o `SlidePreview` e o selo ordinal; o `doc` inteiro de cada página deve ser visível inclusive logo após reabrir o rascunho.
 5. WHILE o Modo Carrossel está ativo, THE App SHALL ocultar a seção "Formato do post" no Passo 1 e mostrar a descrição "O formato foi definido na criação do carrossel."; o Header continua exibindo o formato via `FormatGlyph` + `POST_FORMATS`.
 6. THE App SHALL aplicar o espelhamento do fundo pela `BackgroundMirrorToolbar` do dock, inclusive no carrossel, sem o card "Opções do Fundo" no painel.
-7. THE App SHALL aplicar "Ativar todas" e as prévias em `<details>` por slide: `enableAllFinishes()` altera somente o `finish` do Slide Ativo, e o subscriber de `main.tsx` o sincroniza com `updateActiveSlide`.
+7. THE App SHALL aplicar "Ativar todas"/"Desativar todas" e as prévias pelo botão `Prévia da textura` por slide: ambas as ações em lote preservam parâmetros, alteram somente o `finish` do Slide Ativo e o subscriber de `main.tsx` o sincroniza com `updateActiveSlide`.
 8. THE App SHALL manter o selo "Slide X de Y" junto à folha (`role="status"`, `aria-live="polite"`) somado ao contador da tira, ambos com o mesmo texto.

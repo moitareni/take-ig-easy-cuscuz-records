@@ -51,12 +51,95 @@
 }
 
 .thumbList {
+  position: relative;
   flex: 1;
   display: flex;
   align-items: center;
   gap: 10px;
   overflow-x: auto;
   padding: 4px 2px;
+}
+
+/* Fantasma tracejado do slot de destino durante a reordenação. */
+.dropGhost {
+  position: absolute;
+  top: 0;
+  left: 0;
+  border: 2.5px dashed var(--c-barro);
+  border-radius: var(--radius-sm);
+  background-color: rgba(248, 206, 43, 0.2);
+  box-sizing: border-box;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0;
+  visibility: hidden;
+  will-change: transform, opacity;
+}
+
+:global(body[data-slide-dragging='true']),
+:global(body[data-slide-dragging='true'] *) {
+  cursor: grabbing !important;
+  user-select: none !important;
+}
+
+.ghostCrossoverCue {
+  position: absolute;
+  top: 22%;
+  bottom: 22%;
+  width: 5px;
+  border-radius: 999px;
+  background-color: var(--c-amarelo);
+  border: 1.5px solid var(--c-preto);
+}
+
+.ghostCueLeft {
+  left: -4px;
+}
+
+.ghostCueRight {
+  right: -4px;
+}
+
+/* Camada flutuante do slide arrastado (estilo adesivo). */
+.floatingDragCard {
+  position: fixed;
+  top: 0;
+  left: 0;
+  border: 3px solid var(--c-amarelo);
+  border-radius: var(--radius-sm);
+  background-color: var(--c-surface-muted);
+  box-shadow: 0 12px 0 #0b0500, 0 16px 28px rgba(11, 5, 0, 0.28);
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 90;
+  will-change: transform;
+}
+
+.floatingPreview {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+.floatingBadge {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background-color: var(--c-amarelo);
+  border: 2px solid var(--c-border);
+  font-family: var(--font-headline);
+  font-size: 11px;
+  line-height: 14px;
+  color: var(--c-preto);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+  z-index: 2;
 }
 
 .addThumbBtn {

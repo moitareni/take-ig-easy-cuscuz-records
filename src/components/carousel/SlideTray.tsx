@@ -1,13 +1,15 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { ChevronLeft, ChevronRight, Copy, Plus, Trash2 } from 'lucide-react';
 import { CAROUSEL_MAX_SLIDES } from '../../brand/brand';
-import { resolveReorderIndex, type DropPosition } from '../../lib/slideOrder';
+import { SlidePreview } from '../../canvas/SlidePreview';
+import { useSlideReorderMotion } from '../../hooks/useSlideReorderMotion';
 import { isSlideEmpty, useCarousel } from '../../store/carouselStore';
 import { useEditor } from '../../store/editorStore';
 import { ConfirmDialog } from '../ConfirmDialog';
 import { Button } from '../ui/Button';
 import { IconButton } from '../ui/IconButton';
-import { SlideThumb } from './SlideThumb';
+import { SLIDE_PREVIEW_WIDTH, SlideThumb } from './SlideThumb';
 import styles from './SlideTray.module.css';
 
 /** Teto de segurança: os botões nunca ficam travados se algo falhar. */
@@ -26,6 +28,26 @@ export const SlideTray: React.FC = () => {
 
   const [pendingRemoveIndex, setPendingRemoveIndex] = useState<number | null>(null);
   const [trayReady, setTrayReady] = useState(false);
+
+  const listRef = useRef<HTMLDivElement | null>(null);
+  const floatingRef = useRef<HTMLDivElement | null>(null);
+  const ghostRef = useRef<HTMLDivElement | null>(null);
+  const badgeRef = useRef<HTMLSpanElement | null>(null);
+
+  const {
+    activeDrag,
+    handleThumbPointerDown,
+    shouldSuppressClick,
+  } = useSlideReorderMotion({
+    listRef,
+    floatingRef,
+    ghostRef,
+    badgeRef,
+    slides,
+    format,
+    disabled: !trayReady,
+    onReorder: reorderSlides,
+  });
 
   // As miniaturas são renderizadas ao vivo a partir do doc: já estão prontas
   // no primeiro frame. O timeout é só uma rede de segurança.
@@ -67,19 +89,22 @@ export const SlideTray: React.FC = () => {
     }
   };
 
-  const handleRequestRemove = (index: number) => {
-    if (slides.length <= 1) {
-      showToast('info', 'O carrossel precisa ter pelo menos 1 slide 😅');
-      return;
-    }
-    const target = slides[index];
-    if (!target) return;
-    if (isSlideEmpty(target)) {
-      removeSlide(index);
-    } else {
-      setPendingRemoveIndex(index);
-    }
-  };
+  const handleRequestRemove = useCallback(
+    (index: number) => {
+      if (slides.length <= 1) {
+        showToast('info', 'O carrossel precisa ter pelo menos 1 slide 😅');
+        return;
+      }
+      const target = slides[index];
+      if (!target) return;
+      if (isSlideEmpty(target)) {
+        removeSlide(index);
+      } else {
+        setPendingRemoveIndex(index);
+      }
+    },
+    [slides, removeSlide, showToast],
+  );
 
   const handleConfirmRemove = () => {
     if (pendingRemoveIndex !== null) {
@@ -87,18 +112,6 @@ export const SlideTray: React.FC = () => {
       setPendingRemoveIndex(null);
     }
   };
-
-  // Soltar sobre uma miniatura insere ANTES ou DEPOIS dela, conforme o lado
-  // do ponteiro. O slide arrastado nunca "substitui" o alvo (era o que fazia
-  // a página ao lado parecer ter sido movida).
-  const handleReorder = useCallback(
-    (from: number, target: number, position: DropPosition) => {
-      const to = resolveReorderIndex(from, target, position, slides.length);
-      if (to === null) return;
-      reorderSlides(from, to);
-    },
-    [slides.length, reorderSlides],
-  );
 
   return (
     <>
@@ -116,7 +129,26 @@ export const SlideTray: React.FC = () => {
             onClick={() => setActiveSlide(activeSlideIndex - 1)}
           />
 
-          <div className={styles.thumbList}>
+          <div ref={listRef} className={styles.thumbList}>
+            {activeDrag && (
+              <div
+                ref={ghostRef}
+                className={styles.dropGhost}
+                style={{
+                  width: activeDrag.width,
+                  height: activeDrag.height,
+                }}
+                aria-hidden="true"
+              >
+                {activeDrag.hasCrossoverLeft && (
+                  <span className={`${styles.ghostCrossoverCue} ${styles.ghostCueLeft}`} />
+                )}
+                {activeDrag.hasCrossoverRight && (
+                  <span className={`${styles.ghostCrossoverCue} ${styles.ghostCueRight}`} />
+                )}
+              </div>
+            )}
+
             {slides.map((slide, index) => (
               <SlideThumb
                 key={slide.id}
@@ -129,7 +161,8 @@ export const SlideTray: React.FC = () => {
                 isActive={index === activeSlideIndex}
                 onSelect={setActiveSlide}
                 onRequestRemove={handleRequestRemove}
-                onReorder={handleReorder}
+                onPointerDownThumb={handleThumbPointerDown}
+                shouldSuppressClick={shouldSuppressClick}
                 disabled={!trayReady}
               />
             ))}
@@ -214,6 +247,33 @@ export const SlideTray: React.FC = () => {
         onConfirm={handleConfirmRemove}
         onCancel={() => setPendingRemoveIndex(null)}
       />
+
+      {activeDrag &&
+        typeof document !== 'undefined' &&
+        createPortal(
+          <div
+            ref={floatingRef}
+            className={styles.floatingDragCard}
+            style={{
+              width: activeDrag.width,
+              height: activeDrag.height,
+            }}
+            aria-hidden="true"
+          >
+            <div className={styles.floatingPreview}>
+              <SlidePreview
+                doc={activeDrag.slide.doc}
+                finish={activeDrag.slide.finish}
+                format={format}
+                width={SLIDE_PREVIEW_WIDTH[format]}
+              />
+            </div>
+            <span ref={badgeRef} className={styles.floatingBadge}>
+              {activeDrag.fromIndex + 1}
+            </span>
+          </div>,
+          document.body,
+        )}
     </>
   );
 };

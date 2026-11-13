@@ -1,5 +1,17 @@
 # Plano de Implementação: Cuscuz Records Insta Kit
 
+> **Auditoria de encerramento — 12/11/2026.** As tasks históricas abaixo são
+> registro de implementação, não backlog ativo. A revisão código × testes × specs
+> confirmou como concluídos os contratos de rascunhos IndexedDB, editor de seis
+> etapas, caixa de texto só por largura, acabamentos compactos sem restauração,
+> prévias vivas da tira e a camada de integridade de crossover descrita em
+> `carousel-posts`. Não há task pendente inferida desta auditoria.
+>
+> **Verificação reproduzida:** `npm run typecheck`, `npm run build`, Vitest
+> (**215 testes / 23 arquivos**) e Playwright (**87 passed / 3 skipped**, 90
+> execuções desktop/mobile). Em especial, os testes de regressão cobrem área de
+> texto, reordenação, miniaturas ao reabrir e integridade de dono/cópia.
+
 > **Leva 4 (11/11/2026) — o que prevalece**
 > Tasks executadas nesta leva, uma por vez, com `typecheck` após cada uma e a suíte
 > completa no fim (`typecheck` → `test` → `build` → `e2e`):

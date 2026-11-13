@@ -1,5 +1,42 @@
 # Design Técnico — Carrossel de Posts para Instagram
 
+> **Auditoria de implementação — 12/11/2026 (prevalece sobre todo o histórico abaixo).**
+> A implementação atual substituiu quatro decisões do desenho inicial:
+>
+> 1. **Entrada e armazenamento:** não existem `ModeSelector`, boot direto no
+>    editor ou store persistido em `localStorage`. `HomeScreen` cria/abre um
+>    `CarouselDraftBody` no IndexedDB schema v2; as stores em memória são
+>    carregadas pelo corpo ativo e salvas por `session.ts`.
+> 2. **Identidade do slide:** `loadSlideIntoEditor(slide)` registra
+>    `editingSlideId`. `updateActiveSlide` resolve esse id antes do índice,
+>    corrigindo-o se necessário. Isso preserva por página o `doc`, o `finish` e
+>    suas imagens quando há reordenação, remoção ou assincronia de renderização.
+> 3. **Miniaturas:** `SlidePreview` renderiza cada `doc` com os mesmos nós do
+>    canvas, em Konva somente leitura, supersampling de 240 px e `React.memo`.
+>    Não há `useSlideThumb`, captura do stage, hash, `toDataURL`, cache ou debounce.
+>    `SlideTray` é import estático e seus controles liberam no rAF, com fallback
+>    de 1,5 s.
+> 4. **Crossover:** o par não é mais apenas "mesmo id em páginas adjacentes".
+>    O elemento real é dono (`crossover` sem `crossFrom`) e a cópia declara
+>    `crossFrom`. `normalizeCrossoverOwnership` recupera documentos legados;
+>    `syncCrossoverFromActiveSlide` permite edição bidirecional somente para o
+>    dono correto; `reconcileAllCrossovers` materializa a partir de donos;
+>    `pruneOrphanCrossoverCopies` é a limpeza exclusiva da reordenação.
+>
+> Reordenar só troca posição no array — sem `reconcileAllCrossovers` e sem
+> migração de arte. Caso a poda mude o slide do palco, `resyncEditorDoc` preserva
+> etapa e histórico enquanto remove seleção/edição que ficou inválida. Uma cópia
+> inventada não pode tomar posse; cópia de logo não substitui logo própria, e
+> `EditorCanvas`/`SlidePreview` também ocultam esse espelho visual quando há logo
+> local.
+>
+> `SlideThumb` usa MIME interno `application/x-cuscuz-slide-index`; o alvo decide
+> antes/depois pela metade do ponteiro. O desenho histórico que usa `text/plain`
+> para qualquer arraste é inválido.
+>
+> Verificação da auditoria: `npm run typecheck`, build e e2e passaram; Vitest
+> **215 testes / 23 arquivos**, Playwright **87 passed / 3 skipped** (90 execuções).
+
 > **Leva 4 (11/11/2026) — o que prevalece**
 > Mudanças no editor compartilhado pelos slides; a arquitetura de slides, crossover,
 > miniaturas e exportação ZIP descrita abaixo **não foi alterada**. Fonte de verdade: `AGENTS.md`.
@@ -1015,14 +1052,14 @@ bootDrafts() → home ──createDraft('carousel', format)──► EditorScree
 ### Componentes da tira (Leva 1)
 
 - `SlideTray`: import estático em `EditorScreen.tsx`; `flex: 0 0 auto`, `min-height: 120px`;
-  `trayReady` com liberação por `onPreviewReady` do slide ativo **ou** timeout de 1,5 s;
-  botões `disabled={!trayReady || ...}`, `aria-busy`, "Preparando as miniaturas...".
-- `SlideThumb`: `disabled`, `onPreviewReady`, `PreviewImage` com spinner temático;
-  fallback "Vazio" apenas para slides inativos/verdadeiramente vazios.
-- `useSlideThumb`: cache por `slideId` + hash do `doc`/`finish`, debounce 400 ms,
-  captura via `stage.toDataURL` com `CAROUSEL_THUMB_WIDTH = 270`.
-- `SlidePickerDialog`: usa `getCachedSlideThumb`, agora com `PreviewImage` e mantém
-  o `activeDraftId` na conversão.
+  `trayReady` libera no primeiro `requestAnimationFrame`, com timeout de 1,5 s como rede de
+  segurança; botões `disabled={!trayReady || ...}`, `aria-busy`, "Preparando as miniaturas...".
+- `SlideThumb`: `disabled`, DnD interno com MIME dedicado, selo ordinal, lixeira e
+  `SlidePreview` vivo.
+- `SlidePreview`: renderiza cada `doc`/`finish` imediatamente em Konva somente
+  leitura (supersampling + `React.memo`), sem captura/cache/hash/debounce.
+- `SlidePickerDialog`: usa o mesmo `SlidePreview` e mantém o `activeDraftId` na
+  conversão.
 
 ### Regras por slide
 
@@ -1042,8 +1079,9 @@ bootDrafts() → home ──createDraft('carousel', format)──► EditorScree
 
 `e2e/momento-zero.spec.ts` (modo, formatos, selo "Slide X de Y"),
 `e2e/rascunhos.spec.ts` (carrossel em 1:1, conversão no mesmo rascunho),
-`e2e/regressoes.spec.ts` (tira no primeiro frame, formato oculto no carrossel),
+`e2e/regressoes.spec.ts` (tira viva, reordenação, formato e integridade),
 `src/store/carouselStore.test.ts`, `src/lib/exportCarousel.test.ts`,
-`src/canvas/hooks/useSlideThumb.test.ts`. Estado verificado em 10/11/2026:
-159 testes unitários e `e2e` 63 passed / 3 skipped (66 testes). Build obrigatório
-antes do e2e.
+`src/store/reorderCrossover.test.ts`, `src/store/crossoverOwnershipBugs.test.ts`
+e `src/store/reorderImmutability.test.ts`. Estado verificado em 12/11/2026:
+**215 testes unitários em 23 arquivos** e e2e **87 passed / 3 skipped** (90
+execuções). Build obrigatório antes do e2e.

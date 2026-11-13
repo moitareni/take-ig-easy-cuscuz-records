@@ -877,7 +877,8 @@ export const EditorCanvas = forwardRef<EditorCanvasHandle>((_props, ref) => {
                   (e) =>
                     !isCrossoverCopy(e) &&
                     canElementBleedToSide(e, 'right', postW) &&
-                    !doc.elements.some((cur) => cur.id === e.id),
+                    !doc.elements.some((cur) => cur.id === e.id) &&
+                    !(e.kind === 'logo' && doc.elements.some((cur) => cur.kind === 'logo' && !isCrossoverCopy(cur))),
                 ) ?? []
               ).map((el) => (
                 <CrossoverMirrorNode
@@ -896,7 +897,8 @@ export const EditorCanvas = forwardRef<EditorCanvasHandle>((_props, ref) => {
                   (e) =>
                     !isCrossoverCopy(e) &&
                     canElementBleedToSide(e, 'left', postW) &&
-                    !doc.elements.some((cur) => cur.id === e.id),
+                    !doc.elements.some((cur) => cur.id === e.id) &&
+                    !(e.kind === 'logo' && doc.elements.some((cur) => cur.kind === 'logo' && !isCrossoverCopy(cur))),
                 ) ?? []
               ).map((el) => (
                 <CrossoverMirrorNode

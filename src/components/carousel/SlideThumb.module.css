@@ -10,10 +10,19 @@
     box-shadow var(--duration-fast) var(--ease-bounce),
     border-color var(--duration-fast) ease;
   cursor: grab;
+  touch-action: none;
+  user-select: none;
 }
 
 .thumbWrapper:active {
   cursor: grabbing;
+}
+
+/* Quando o motor GSAP está ativo, desliga a transição CSS para não haver briga de frames. */
+:global([data-motion-active='true']) .thumbWrapper {
+  transition: box-shadow var(--duration-fast) var(--ease-bounce),
+    border-color var(--duration-fast) ease !important;
+  will-change: transform;
 }
 
 .aspect34 {
@@ -34,7 +43,7 @@
 .active {
   border: 3px solid #f8ce2b;
   box-shadow: 0 4px 0 #0b0500;
-  transform: translateY(-2px);
+  translate: 0 -2px;
 }
 
 /* Prévia viva do slide (camada de baixo). */

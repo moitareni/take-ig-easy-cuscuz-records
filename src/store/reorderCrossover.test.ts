@@ -318,4 +318,83 @@ describe('reordenar slides não corrompe a arte (relatório do vídeo)', () => {
     expect(slides[1].doc.elements.find((el) => el.id === 'O')?.crossover).toBeUndefined();
     expect(slides[1].doc.elements.find((el) => el.id === 'O')?.crossFrom).toBeUndefined();
   });
+
+  it('BUG-01: reorderSlides resincroniza useEditor.doc quando o slide ativo perde cópia órfã', () => {
+    const xOwner = text('X', 1030, 'ARAME', true);
+    const slides = [
+      slide('A', 'pronto-1', []),
+      slide('B', 'pronto-1', []),
+      slide('E', 'pronto-1', [xOwner]),
+      slide('F', 'pronto-1', [text('own-F', 540, 'F'), copyOf(xOwner, 'E', -1080)]),
+    ];
+    install(slides, 3); // F ativo no editor com a cópia X
+
+    useCarousel.getState().reorderSlides(3, 1); // F vai para o índice 1 (entre A e B)
+
+    expect(slideById('F').doc.elements.some((el) => el.id === 'X')).toBe(false);
+    expect(useEditor.getState().doc.elements.some((el) => el.id === 'X')).toBe(false);
+
+    // Editar outro elemento em F não ressuscita X nem toca em E
+    useEditor.getState().updateElement('own-F', { y: 500 });
+    expect(slideById('F').doc.elements.some((el) => el.id === 'X')).toBe(false);
+    expect(slideById('E').doc.elements.some((el) => el.id === 'X')).toBe(true);
+  });
+
+  it('BUG-02: logo em crossover não sobrescreve a logo própria do slide vizinho', () => {
+    const logoS1: El = {
+      id: 'logo-1',
+      kind: 'logo',
+      variant: 'paper',
+      x: 1030,
+      y: 1300,
+      rotation: 0,
+      scale: 1,
+      crossover: true,
+    };
+    const logoS6: El = {
+      id: 'logo-6',
+      kind: 'logo',
+      variant: 'clean',
+      x: 120,
+      y: 1300,
+      rotation: 0,
+      scale: 1,
+    };
+    install([slide('S1', 'pronto-1', [logoS1]), slide('S6', 'pronto-1', [logoS6])], 0);
+
+    // Move a logo em S1 (dispara syncCrossoverFromActiveSlide para S6)
+    useEditor.getState().updateElement('logo-1', { y: 1290 });
+
+    const s6 = slideById('S6');
+    expect(s6.doc.elements.some((el) => el.id === 'logo-6')).toBe(true);
+    expect(s6.doc.elements.some((el) => el.id === 'logo-1')).toBe(false);
+  });
+
+  it('continuidade após reorder: clicar não altera docs, mas editar/adicionar reconcilia com a vizinhança atual', () => {
+    const arame = text('t-arame', 1030, 'ARAME', true);
+    const centro = text('t-centro', 540, 'CENTRO');
+    const slides = [
+      slide('S1', 'pronto-1', [arame, centro]),
+      slide('S2', 'pronto-1', [copyOf(arame, 'S1', -1080)]),
+      slide('S3', 'pronto-1', [text('t-s3', 540, 'S3')]),
+    ];
+    install(slides, 0);
+
+    // Move S3 para o meio (entre S1 e S2): [S1, S3, S2]
+    useCarousel.getState().reorderSlides(2, 1);
+    expect(currentSlides().map((s) => s.id)).toEqual(['S1', 'S3', 'S2']);
+    expect(slideById('S2').doc.elements.some((el) => el.id === 't-arame')).toBe(false);
+
+    // Apenas clicar em S1 e S3 não materializa nada (SlidePreview/EditorCanvas mostram a continuação ao vivo)
+    useCarousel.getState().setActiveSlide(0);
+    useCarousel.getState().setActiveSlide(1);
+    expect(slideById('S3').doc.elements.map((el) => el.id)).toEqual(['t-s3']);
+
+    // Ao editar em S1, a sangria sincroniza com o novo vizinho S3
+    useCarousel.getState().setActiveSlide(0);
+    useEditor.getState().updateElement('t-centro', { text: 'EDITADO' });
+    expect(slideById('S3').doc.elements.some((el) => el.id === 't-arame' && el.crossFrom === 'S1')).toBe(
+      true,
+    );
+  });
 });

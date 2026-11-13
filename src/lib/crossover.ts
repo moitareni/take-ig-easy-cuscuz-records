@@ -230,6 +230,10 @@ function upsertElementInSlide(slide: SlideData, incoming: El): SlideData {
   if (incoming.kind === 'logo') {
     const existingLogoIdx = list.findIndex((e) => e.kind === 'logo');
     if (existingLogoIdx >= 0) {
+      // A regra de uma logo por post vale para a ARTE do slide: a cópia de
+      // sangria da logo do vizinho nunca substitui a logo própria da página
+      // (era assim que ela era apagada e a página ficava sem logo nenhuma).
+      if (isCrossoverCopy(incoming) && !isCrossoverCopy(list[existingLogoIdx])) return slide;
       const nextElements = [...list];
       nextElements[existingLogoIdx] = incoming;
       return {
@@ -327,7 +331,20 @@ export function syncCrossoverFromActiveSlide(
     // Uma cópia pertence ao slide `crossFrom` e só espelha de volta para ELE
     // (nunca para o outro lado, nunca para uma página não vizinha).
     if (isCrossoverCopy(el)) {
-      const side = copyOwnerSide(el, postW);
+      // A cópia precisa JÁ existir neste doc: uma cópia que aparece do nada
+      // (palco dessincronizado, doc herdado) nunca reivindica arte de outra
+      // página — senão arrastá-la "para dentro" apagava o elemento do dono.
+      const previous = prevActiveDoc.elements.find(
+        (p) => p.id === el.id && p.crossFrom === el.crossFrom,
+      );
+      if (!previous) {
+        droppedCopies.add(el.id);
+        return;
+      }
+
+      // O lado do dono vem de onde a cópia ESTAVA, não de onde ela está agora:
+      // arrastar a cópia para dentro da página não pode trocar o dono dela.
+      const side = copyOwnerSide(previous, postW);
       const ownerOnPrev = side === 'prev';
       const ownerIndex = ownerOnPrev ? activeIndex - 1 : activeIndex + 1;
       const ownerSlide = nextSlides[ownerIndex];

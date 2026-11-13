@@ -42,6 +42,7 @@ const SlidePreviewImpl: React.FC<SlidePreviewProps> = ({
   const displayHeight = (width * postH) / postW;
   const cssScale = width / RENDER_WIDTH;
 
+  const hasOwnLogo = doc.elements.some((cur) => cur.kind === 'logo' && !isCrossoverCopy(cur));
   // Continuações visuais de crossovers dos vizinhos (mesma regra do
   // EditorCanvas), recortadas pela folha.
   const prevMirrors =
@@ -49,14 +50,16 @@ const SlidePreviewImpl: React.FC<SlidePreviewProps> = ({
       (el) =>
         !isCrossoverCopy(el) &&
         canElementBleedToSide(el, 'right', postW) &&
-        !doc.elements.some((cur) => cur.id === el.id),
+        !doc.elements.some((cur) => cur.id === el.id) &&
+        !(el.kind === 'logo' && hasOwnLogo),
     ) ?? [];
   const nextMirrors =
     nextSlide?.doc.elements.filter(
       (el) =>
         !isCrossoverCopy(el) &&
         canElementBleedToSide(el, 'left', postW) &&
-        !doc.elements.some((cur) => cur.id === el.id),
+        !doc.elements.some((cur) => cur.id === el.id) &&
+        !(el.kind === 'logo' && hasOwnLogo),
     ) ?? [];
 
   return (

@@ -113,6 +113,32 @@ export function loadSlideIntoEditor(slide: SlideData): void {
   useEditor.temporal.getState().clear();
 }
 
+/**
+ * Alinha o palco ao doc do slide ativo quando uma limpeza fora do `useEditor`
+ * mudou esse doc (o prune de cópias órfãs na reordenação). Sem isso o canvas
+ * continua exibindo/listando uma cópia que a página não tem mais — e arrastá-la
+ * reivindicaria a arte de outra página.
+ *
+ * Não é troca de slide: preserva `step` e não cria passo de undo.
+ */
+function resyncEditorDoc(slide: SlideData): void {
+  const editor = useEditor.getState();
+  if (editor.doc === slide.doc) return;
+  const ids = new Set(slide.doc.elements.map((el) => el.id));
+  const temporal = useEditor.temporal.getState();
+  temporal.pause();
+  try {
+    useEditor.setState({
+      doc: slide.doc,
+      selectedIds: editor.selectedIds.filter((id) => ids.has(id)),
+      selectedId: editor.selectedId && ids.has(editor.selectedId) ? editor.selectedId : null,
+      editingId: editor.editingId && ids.has(editor.editingId) ? editor.editingId : null,
+    });
+  } finally {
+    temporal.resume();
+  }
+}
+
 function cloneDocAndFinish(doc: Doc, finish: FinishState, format: PostFormat): { doc: Doc; finish: FinishState } {
   const clonedDoc: Doc = JSON.parse(JSON.stringify(doc));
   clonedDoc.format = format;
@@ -288,6 +314,11 @@ export const useCarousel = create<CarouselState>()(
 
           return { slides, activeSlideIndex: newActive };
         });
+
+        // O prune pode ter tirado uma cópia órfã do slide que está no palco.
+        const after = get();
+        const active = after.slides[after.activeSlideIndex];
+        if (active && editingSlideId === active.id) resyncEditorDoc(active);
       },
 
       setActiveSlide: (index) => {
@@ -310,6 +341,10 @@ export const useCarousel = create<CarouselState>()(
           const index = byId >= 0 ? byId : s.activeSlideIndex;
           const slide = s.slides[index];
           if (!slide) return s;
+          // Nada mudou no palco (ex.: `resyncEditorDoc` devolveu o doc já
+          // podado): reagir aqui materializaria sangria em vizinha nova, o que
+          // a reordenação não deve fazer.
+          if (slide.doc === doc && slide.finish === finish) return s;
           const normalizedDoc = doc.format === s.format ? doc : { ...doc, format: s.format };
           const slides = syncCrossoverFromActiveSlide(
             s.slides,
