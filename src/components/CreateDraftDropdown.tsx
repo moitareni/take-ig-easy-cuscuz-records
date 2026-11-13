@@ -32,11 +32,14 @@ export interface CreateDraftDropdownProps {
   onSelect: (kind: CreateDraftKind) => void;
   /** Centraliza o menu sob o gatilho (usado no quadro vazio, longe da borda da tela). */
   centered?: boolean;
+  /** Gatilho em bloco: ocupa toda a caixa e a altura do card vizinho (home com rascunhos). */
+  block?: boolean;
 }
 
 export const CreateDraftDropdown: React.FC<CreateDraftDropdownProps> = ({
   onSelect,
   centered = false,
+  block = false,
 }) => {
   const [open, setOpen] = useState(false);
   const menuId = useId();
@@ -112,11 +115,14 @@ export const CreateDraftDropdown: React.FC<CreateDraftDropdownProps> = ({
   };
 
   return (
-    <div className={`${styles.root} ${centered ? styles.rootCentered : ''}`} ref={rootRef}>
+    <div
+      className={`${styles.root} ${centered ? styles.rootCentered : ''} ${block ? styles.rootBlock : ''}`}
+      ref={rootRef}
+    >
       <button
         type="button"
         ref={triggerRef}
-        className={`${styles.trigger} ${open ? styles.triggerOpen : ''}`}
+        className={`${styles.trigger} ${block ? styles.triggerBlock : ''} ${open ? styles.triggerOpen : ''}`}
         data-testid="create-draft-trigger"
         aria-haspopup="menu"
         aria-expanded={open}

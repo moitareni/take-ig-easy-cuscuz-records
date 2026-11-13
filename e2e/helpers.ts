@@ -34,7 +34,7 @@ export async function waitForHome(page: Page): Promise<void> {
   await expect(page.getByTestId('create-draft-trigger').first()).toBeVisible();
 }
 
-/** Abre o menu "+ Criar novo" da home (header ou quadro vazio). */
+/** Abre o menu "+ Criar novo" da home (ao lado do "Continuar", no header ou no quadro vazio). */
 export async function openCreateMenu(page: Page): Promise<void> {
   await page.getByTestId('create-draft-trigger').first().click();
   await expect(page.getByRole('menu', { name: CREATE_MENU })).toBeVisible();

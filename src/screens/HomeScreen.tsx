@@ -307,7 +307,9 @@ export const HomeScreen: React.FC = () => {
     )[0];
   }, [drafts]);
 
-  const showHeaderCreate = drafts.length > 0 || listStatus !== 'ready';
+  // O `+ Criar novo` mora ao lado do "Continuar" quando há rascunhos; no header só
+  // enquanto a lista ainda não está pronta (senão ficaria sem nenhum caminho de criação).
+  const showHeaderCreate = drafts.length === 0 && listStatus !== 'ready';
 
   const handleOpen = async (draft: DraftMeta) => {
     if (busyId || exportingDraftId) return;
@@ -415,29 +417,34 @@ export const HomeScreen: React.FC = () => {
         )}
 
         {continueDraft && (
-          <section className={styles.continueCard} aria-labelledby="continue-title">
-            <div className={styles.continueCover}>
-              <CoverThumb draft={continueDraft} url={covers[continueDraft.id]} />
+          <div className={styles.startRow}>
+            <div className={styles.createTile}>
+              <CreateDraftDropdown onSelect={handleCreate} block />
             </div>
-            <div className={styles.continueBody}>
-              <p className={styles.continueEyebrow}>Continuar de onde parou</p>
-              <h2 id="continue-title" className={styles.continueTitle}>
-                {continueDraft.title}
-              </h2>
-              <p className={styles.cardMeta}>
-                {kindLabel(continueDraft)} · {formatWhen(continueDraft.updatedAt)}
-              </p>
-            </div>
-            <Button
-              variant="primary"
-              size="md"
-              icon={<ArrowRight size={18} strokeWidth={2.5} />}
-              onClick={() => void handleOpen(continueDraft)}
-              disabled={busyId !== null}
-            >
-              Continuar
-            </Button>
-          </section>
+            <section className={styles.continueCard} aria-labelledby="continue-title">
+              <div className={styles.continueCover}>
+                <CoverThumb draft={continueDraft} url={covers[continueDraft.id]} />
+              </div>
+              <div className={styles.continueBody}>
+                <p className={styles.continueEyebrow}>Continuar de onde parou</p>
+                <h2 id="continue-title" className={styles.continueTitle}>
+                  {continueDraft.title}
+                </h2>
+                <p className={styles.cardMeta}>
+                  {kindLabel(continueDraft)} · {formatWhen(continueDraft.updatedAt)}
+                </p>
+              </div>
+              <Button
+                variant="primary"
+                size="md"
+                icon={<ArrowRight size={18} strokeWidth={2.5} />}
+                onClick={() => void handleOpen(continueDraft)}
+                disabled={busyId !== null}
+              >
+                Continuar
+              </Button>
+            </section>
+          </div>
         )}
 
         <section aria-labelledby="drafts-title" className={styles.draftsSection}>

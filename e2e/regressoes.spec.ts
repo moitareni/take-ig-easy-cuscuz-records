@@ -146,7 +146,7 @@ test.describe('Regressões da leva P0', () => {
     await page.getByRole('heading', { name: /Cuscuz Records Insta Kit/ }).click();
     await expect(tipText).toBeHidden();
 
-    // Com rascunho salvo, o gatilho do header aparece; ao excluir o último, volta para o quadro
+    // Com rascunho salvo, o gatilho aparece ao lado do "Continuar"; ao excluir o último, volta para o quadro
     await createSingle(page);
     await page.locator('button[title*="Pronto 1"]').first().click();
     await goHome(page);

@@ -80,7 +80,24 @@
   color: var(--c-preto);
 }
 
+/* "Criar novo" e "Continuar de onde parou" lado a lado, com o mesmo tamanho. */
+.startRow {
+  display: flex;
+  align-items: stretch;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.createTile {
+  display: flex;
+  flex: 1 1 320px;
+  min-width: 0;
+}
+
 .continueCard {
+  /* a caixa vizinha é um dropdown em bloco: o card pode encolher sem estourar */
+  flex: 1 1 320px;
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 20px;
@@ -504,6 +521,16 @@
 
   .content {
     padding: 20px 16px 48px;
+  }
+
+  .startRow {
+    flex-direction: column;
+  }
+
+  .createTile,
+  .continueCard {
+    /* na coluna a base flex viraria altura: cada bloco volta ao tamanho do conteúdo */
+    flex: 0 0 auto;
   }
 
   .continueCard {
