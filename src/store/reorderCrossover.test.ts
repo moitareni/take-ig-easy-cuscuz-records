@@ -370,7 +370,7 @@ describe('reordenar slides não corrompe a arte (relatório do vídeo)', () => {
     expect(s6.doc.elements.some((el) => el.id === 'logo-1')).toBe(false);
   });
 
-  it('continuidade após reorder: clicar não altera docs, mas editar/adicionar reconcilia com a vizinhança atual', () => {
+  it('continuidade após reorder: clicar materializa a cópia que já aparecia, editar sincroniza com a vizinhança atual', () => {
     const arame = text('t-arame', 1030, 'ARAME', true);
     const centro = text('t-centro', 540, 'CENTRO');
     const slides = [
@@ -385,10 +385,21 @@ describe('reordenar slides não corrompe a arte (relatório do vídeo)', () => {
     expect(currentSlides().map((s) => s.id)).toEqual(['S1', 'S3', 'S2']);
     expect(slideById('S2').doc.elements.some((el) => el.id === 't-arame')).toBe(false);
 
-    // Apenas clicar em S1 e S3 não materializa nada (SlidePreview/EditorCanvas mostram a continuação ao vivo)
+    // Clicar não move arte de página: a única mudança é a cópia de sangria que
+    // já aparecia desenhada (o espelho não recebe clique) passar a existir no
+    // doc da vizinha, com a posse do dono. Sem isso a página vizinha abria com
+    // um elemento visível e não interativo.
     useCarousel.getState().setActiveSlide(0);
     useCarousel.getState().setActiveSlide(1);
-    expect(slideById('S3').doc.elements.map((el) => el.id)).toEqual(['t-s3']);
+    expect(slideById('S3').doc.elements.map((el) => el.id).sort()).toEqual(['t-arame', 't-s3']);
+    expect(
+      slideById('S3').doc.elements.find((el) => el.id === 't-arame')?.crossFrom,
+    ).toBe('S1');
+    // O dono continua intacto (clicar nunca apaga nem duplica arte).
+    expect(slideById('S1').doc.elements.map((el) => el.id).sort()).toEqual([
+      't-arame',
+      't-centro',
+    ]);
 
     // Ao editar em S1, a sangria sincroniza com o novo vizinho S3
     useCarousel.getState().setActiveSlide(0);

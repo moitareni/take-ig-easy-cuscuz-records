@@ -7,7 +7,7 @@ import {
 } from '../../store/carouselStore';
 import { defaultFinish, emptyDoc, useEditor } from '../../store/editorStore';
 import { useDraftsStore } from '../../store/draftsStore';
-import { extractSingleSlideData } from '../crossover';
+import { extractSingleSlideData, reconcileAllCrossovers } from '../crossover';
 import { collectDocImageIds, reconcileAllSlides } from '../carouselGC';
 import { collectGarbageImages, getStoredImageIds, loadUserImages } from '../userImages';
 import { captureAndSaveCover, ensureCover } from './cover';
@@ -152,13 +152,17 @@ function applyBodyToStores(body: DraftBody): void {
   }
 
   const format = normalizeFormat(body.format);
+  // Mesmo motivo do `setActiveSlide`: a cópia precisa existir no DOC, não só
+  // como espelho (que não é clicável). Assim a página vizinha já abre
+  // interativa, mesmo se o rascunho salvo ficou sem alguma cópia.
+  const slides = reconcileAllCrossovers(body.slides, format);
   useCarousel.setState({
     mode: 'carousel',
-    slides: body.slides,
+    slides,
     activeSlideIndex: body.activeSlideIndex,
     format,
   });
-  const active = body.slides[body.activeSlideIndex] ?? body.slides[0];
+  const active = slides[body.activeSlideIndex] ?? slides[0];
   if (active) loadSlideIntoEditor(active);
   useEditor.temporal.getState().clear();
 }

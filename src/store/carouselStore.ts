@@ -329,6 +329,20 @@ export const useCarousel = create<CarouselState>()(
         if (index < 0 || index >= s.slides.length) return;
         set({ activeSlideIndex: index });
         loadSlideIntoEditor(s.slides[index]);
+        // A cópia de crossover precisa estar no DOC da página: o espelho é
+        // desenhado, mas não recebe clique. Reconciliar aqui garante a página
+        // vizinha interativa já no primeiro frame — inclusive quando o estado
+        // salvo veio de uma sessão em que a cópia ficou para trás.
+        const reconciled = reconcileAllCrossovers(s.slides, s.format);
+        if (reconciled === s.slides) return;
+        set({ slides: reconciled });
+        const byId = editingSlideId
+          ? reconciled.findIndex((slide) => slide.id === editingSlideId)
+          : -1;
+        const activeIndex = byId >= 0 ? byId : index;
+        set({ activeSlideIndex: activeIndex });
+        const active = reconciled[activeIndex];
+        if (active) resyncEditorDoc(active);
       },
 
       updateActiveSlide: (doc, finish) => {
@@ -357,6 +371,16 @@ export const useCarousel = create<CarouselState>()(
           if (slides === s.slides && index === s.activeSlideIndex) return s;
           return { slides, activeSlideIndex: index };
         });
+        // O sync pode normalizar marcas e remover cópias fantasmas do doc ativo.
+        // O palco precisa ficar com o MESMO doc que o store gravou; senão a
+        // próxima edição parte de um `prevActiveDoc` diferente do que está na
+        // tela (e arrastar o fantasma não espelharia para lugar nenhum).
+        const after = get();
+        const byId = editingSlideId
+          ? after.slides.findIndex((slide) => slide.id === editingSlideId)
+          : -1;
+        const active = after.slides[byId >= 0 ? byId : after.activeSlideIndex];
+        if (active) resyncEditorDoc(active);
       },
 
       setExporting: (progress) =>

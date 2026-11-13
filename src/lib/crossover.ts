@@ -28,17 +28,45 @@ export function isCrossoverCopy(el: El): boolean {
 }
 
 /**
- * Cópia de rascunho anterior a `crossFrom`: marcada e com o centro fora da
- * folha. É cicatrizada ao carregar (`normalizeCrossoverOwnership`) e, até lá,
- * também não pode agir como dona.
+ * Forma de uma cópia anterior a `crossFrom`: marcada e com o centro fora da
+ * folha. Sozinho, isto **não** identifica uma cópia — o próprio DONO fica
+ * assim quando é empurrado para fora da própria página, que é justamente o
+ * caso "elemento entre duas páginas". Quem classifica ao vivo é `isLegacyCopy`.
  */
-function isLegacyCopy(el: El, postW: number): boolean {
+function isMarkedOutsideSheet(el: El, postW: number): boolean {
   return !isCrossoverCopy(el) && el.crossover === true && (el.x < -0.5 || el.x > postW + 0.5);
 }
 
-/** Só o dono materializa cópias; cópias (novas ou legadas) são inertes. */
-function canSourceBleed(el: El, postW: number): boolean {
-  return !isCrossoverCopy(el) && !isLegacyCopy(el, postW);
+/**
+ * Cópia de rascunho anterior a `crossFrom` **de verdade**: marcada, com o
+ * centro fora da folha **e** com um dono na vizinhança (mesmo `id` deslocado
+ * em ±postW). É cicatrizada ao carregar (`normalizeCrossoverOwnership`) e, até
+ * lá, também não pode agir como dona.
+ *
+ * O teste de posição sozinho tratava o DONO como cópia inerte assim que o
+ * centro dele passava da borda da página: a vizinha nunca recebia a cópia
+ * (ficava só o espelho, que não recebe clique) e uma cópia já materializada
+ * congelava na posição antiga. Era o "só consigo mexer pela página onde o
+ * elemento nasceu", com o limite de ±0,5 px em volta da borda.
+ */
+function isLegacyCopy(
+  el: El,
+  postW: number,
+  prev?: SlideData,
+  nextSlide?: SlideData,
+): boolean {
+  if (!isMarkedOutsideSheet(el, postW)) return false;
+  return findLegacyOwner(el, prev, nextSlide, postW) !== null;
+}
+
+/** Só o dono materializa cópias; cópias (com posse ou legadas) são inertes. */
+function canSourceBleed(
+  el: El,
+  postW: number,
+  prev?: SlideData,
+  nextSlide?: SlideData,
+): boolean {
+  return !isCrossoverCopy(el) && !isLegacyCopy(el, postW, prev, nextSlide);
 }
 
 /**
@@ -146,6 +174,17 @@ export function canElementBleedToSide(
   }
 }
 
+/**
+ * `true` quando o elemento está **inteiro** fora da folha daquele lado — não
+ * toca mais a página. `'left'`: tudo à esquerda de `x = 0`; `'right'`: tudo à
+ * direita de `x = postW`.
+ */
+export function isFullyOutside(el: El, side: 'left' | 'right', postW: number): boolean {
+  const span = getElementHorizSpan(el, postW);
+  if (!span) return false;
+  return side === 'left' ? span.maxX <= 0 : span.minX >= postW;
+}
+
 /** Remove a flag `crossover` de uma lista de elementos (preservando referências se inalterado). */
 export function stripCrossoverFromElements(elements: El[]): El[] {
   if (!elements.some((e) => e.crossover !== undefined || e.crossFrom !== undefined)) {
@@ -251,6 +290,22 @@ function upsertElementInSlide(slide: SlideData, incoming: El): SlideData {
   };
 }
 
+/**
+ * Entrega a arte a uma página (handoff): troca a cópia homónima, se houver,
+ * pelo elemento com posse própria. Elementos de outro `id` no destino não são
+ * tocados — um handoff nunca apaga arte de ninguém.
+ */
+function adoptElementInSlide(slide: SlideData, incoming: El): SlideData {
+  const list = slide.doc.elements;
+  const idx = list.findIndex((e) => e.id === incoming.id);
+  if (idx < 0) {
+    return { ...slide, doc: { ...slide.doc, elements: [...list, incoming] } };
+  }
+  const nextElements = [...list];
+  nextElements[idx] = incoming;
+  return { ...slide, doc: { ...slide.doc, elements: nextElements } };
+}
+
 function removeElementFromSlide(slide: SlideData, id: string): SlideData {
   if (!slide.doc.elements.some((e) => e.id === id)) return slide;
   return {
@@ -325,8 +380,59 @@ export function syncCrossoverFromActiveSlide(
   // 2. Sincronizar cada DONO do slide ativo com as vizinhas imediatas.
   let updatedActiveElements: El[] | null = null;
   const droppedCopies = new Set<string>();
+  /** Elementos que passaram a ser de outra página nesta edição. */
+  const handedOff = new Set<string>();
 
   newActiveDoc.elements.forEach((el, idx) => {
+    // ── HANDOFF: arte arrastada INTEIRA para fora desta página ────────────
+    // Sai da folha de vez (não toca mais a página e já passou da Zona de
+    // Sangria) e existe vizinha daquele lado: a posse vai para ela, com as
+    // coordenadas convertidas. Sem isso o elemento deixava de sangrar, a
+    // cópia era removida e o dono ficava fora da folha (recortado) — sumia
+    // das duas páginas, em "limbo", mesmo continuando no doc.
+    //
+    // Vem antes do ramo de cópia: a cópia arrastada para fora pelo lado
+    // oposto também entrega a arte àquela vizinha, em vez de virar arte desta
+    // página fora da folha (invisível).
+    const outLeft =
+      activeIndex > 0 &&
+      isFullyOutside(el, 'left', postW) &&
+      !canElementBleedToSide(el, 'left', postW);
+    const outRight =
+      activeIndex < nextSlides.length - 1 &&
+      isFullyOutside(el, 'right', postW) &&
+      !canElementBleedToSide(el, 'right', postW);
+    if (outLeft || outRight) {
+      const targetIndex = outLeft ? activeIndex - 1 : activeIndex + 1;
+      const target = nextSlides[targetIndex];
+      const moved: El = {
+        ...el,
+        x: round2(outLeft ? el.x + postW : el.x - postW),
+      };
+      delete moved.crossover;
+      delete moved.crossFrom;
+      const artOwnerId = el.crossFrom ?? ownerId;
+      const existing = target.doc.elements.find((e) => e.id === el.id);
+      // Só entrega sobre a MESMA arte (cópia homónima ou o próprio dono).
+      // Elemento real de outro id nunca é sobrescrito por um handoff.
+      if (!existing || isCrossoverCopy(existing) || target.id === artOwnerId) {
+        // A arte é uma só: sai daqui e de qualquer outra cópia.
+        for (let j = 0; j < nextSlides.length; j++) {
+          if (j === activeIndex || j === targetIndex) continue;
+          const slide = nextSlides[j];
+          const isArtOwnerSlide = slide.id === artOwnerId;
+          const hasCopy = slide.doc.elements.some(
+            (e) => e.id === el.id && e.crossFrom === artOwnerId,
+          );
+          if (!isArtOwnerSlide && !hasCopy) continue;
+          nextSlides[j] = removeElementFromSlide(slide, el.id);
+        }
+        nextSlides[targetIndex] = adoptElementInSlide(target, moved);
+        handedOff.add(el.id);
+        return;
+      }
+    }
+
     // ── CÓPIA na página ativa ─────────────────────────────────────────────
     // Uma cópia pertence ao slide `crossFrom` e só espelha de volta para ELE
     // (nunca para o outro lado, nunca para uma página não vizinha).
@@ -342,17 +448,21 @@ export function syncCrossoverFromActiveSlide(
         return;
       }
 
-      // O lado do dono vem de onde a cópia ESTAVA, não de onde ela está agora:
-      // arrastar a cópia para dentro da página não pode trocar o dono dela.
-      const side = copyOwnerSide(previous, postW);
-      const ownerOnPrev = side === 'prev';
-      const ownerIndex = ownerOnPrev ? activeIndex - 1 : activeIndex + 1;
-      const ownerSlide = nextSlides[ownerIndex];
-      // Órfã (sem dono do lado certo): sai do doc ativo — a arte continua no dono.
-      if (!ownerSlide || ownerSlide.id !== el.crossFrom) {
+      // O DONO declarado (`crossFrom`) decide o lado — nunca o `x` da cópia.
+      // Antes o lado vinha de onde a cópia estava: arrastar uma cópia larga
+      // para dentro da página (centro além de postW/2) fazia o motor procurar
+      // o dono na página SEGUINTE e descartar a cópia em silêncio.
+      const ownerOnPrev =
+        activeIndex > 0 && nextSlides[activeIndex - 1].id === el.crossFrom;
+      const ownerOnNext =
+        activeIndex < nextSlides.length - 1 && nextSlides[activeIndex + 1].id === el.crossFrom;
+      // Órfã (o dono declarado não é mais vizinho): sai do doc ativo — a arte
+      // continua no dono.
+      if (!ownerOnPrev && !ownerOnNext) {
         droppedCopies.add(el.id);
         return;
       }
+      const ownerIndex = ownerOnPrev ? activeIndex - 1 : activeIndex + 1;
 
       const bleedSide = ownerOnPrev ? 'left' : 'right';
       if (!canElementBleedToSide(el, bleedSide, postW)) {
@@ -387,7 +497,9 @@ export function syncCrossoverFromActiveSlide(
     }
 
     // Cópia legada (sem dono declarado) não é fonte até ser cicatrizada.
-    if (!canSourceBleed(el, postW)) return;
+    if (!canSourceBleed(el, postW, nextSlides[activeIndex - 1], nextSlides[activeIndex + 1])) {
+      return;
+    }
 
     const hasPrev = activeIndex > 0;
     const hasNext = activeIndex < nextSlides.length - 1;
@@ -466,6 +578,9 @@ export function syncCrossoverFromActiveSlide(
       (el) => !(droppedCopies.has(el.id) && isCrossoverCopy(el)),
     );
   }
+  if (handedOff.size > 0) {
+    activeElements = activeElements.filter((el) => !handedOff.has(el.id));
+  }
   const finalActiveDoc =
     activeElements === newActiveDoc.elements
       ? newActiveDoc
@@ -541,7 +656,7 @@ export function normalizeCrossoverOwnership(
         continue;
       }
 
-      if (isLegacyCopy(el, postW)) {
+      if (isMarkedOutsideSheet(el, postW)) {
         const ownerSlideId = findLegacyOwner(el, prev, nextSlide, postW);
         if (ownerSlideId) {
           elements.push({ ...el, crossFrom: ownerSlideId });
@@ -622,7 +737,7 @@ export function reconcileAllCrossovers(
   for (let i = 0; i < nextSlides.length; i++) {
     const slide = nextSlides[i];
     for (const el of slide.doc.elements) {
-      if (!canSourceBleed(el, postW)) continue;
+      if (!canSourceBleed(el, postW, nextSlides[i - 1], nextSlides[i + 1])) continue;
       if (i > 0 && canElementBleedToSide(el, 'left', postW)) {
         const leftCopy: El = {
           ...el,
