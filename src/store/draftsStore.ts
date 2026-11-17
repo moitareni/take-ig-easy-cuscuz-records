@@ -78,6 +78,8 @@ export const useDraftsStore = create<DraftsState>()((set) => ({
   setSaveState: (saveStatus, saveError) => set({ saveStatus, saveError }),
 }));
 
+// Exposto intencionalmente em produção (dist/): a suíte E2E (Playwright sobre
+// `vite preview`) inspeciona e prepara o estado de rascunhos via `page.evaluate`.
 if (typeof window !== 'undefined') {
   (window as unknown as Record<string, unknown>).__useDraftsStore = useDraftsStore;
 }

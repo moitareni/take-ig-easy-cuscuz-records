@@ -18,6 +18,14 @@
   justify-content: start;
 }
 
+.swatches4 {
+  grid-template-columns: repeat(4, 38px);
+}
+
+.swatches5 {
+  grid-template-columns: repeat(5, 38px);
+}
+
 .swatch {
   width: 38px;
   height: 38px;

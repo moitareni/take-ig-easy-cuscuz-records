@@ -1,6 +1,5 @@
 import type Konva from 'konva';
 import { getPostDimensions, type PostFormat } from '../brand/brand';
-import { loadSlideIntoEditor, useCarousel } from '../store/carouselStore';
 import type { Doc, SlideData } from '../types';
 import { fireCuteConfetti } from './export';
 import { ensureFontsLoaded } from './fonts';
@@ -11,6 +10,7 @@ export interface ExportCarouselOptions {
   format: PostFormat;
   stage: Konva.Stage;
   stageDisplayWidth: number;
+  activateSlide: (slide: SlideData, index: number) => void;
   onProgress: (current: number, total: number) => void;
 }
 
@@ -74,6 +74,7 @@ export async function exportCarousel({
   format,
   stage,
   stageDisplayWidth,
+  activateSlide,
   onProgress,
 }: ExportCarouselOptions): Promise<void> {
   const JSZip = (await import('jszip')).default;
@@ -83,9 +84,8 @@ export async function exportCarousel({
 
   for (let i = 0; i < slides.length; i++) {
     try {
-      // 1. Ativa e carrega o slide no editor (atualizando activeSlideIndex para renderizar crossovers adjacentes)
-      useCarousel.setState({ activeSlideIndex: i });
-      loadSlideIntoEditor(slides[i]);
+      // 1. Ativa e carrega o slide no editor (para renderizar crossovers adjacentes)
+      activateSlide(slides[i], i);
       // 2. Aguarda re-render do Konva (um ciclo de RAF + margem)
       await new Promise((res) => setTimeout(res, 80));
       // 3. Garante fontes e imagens prontas (incluindo imagens de crossover dos slides adjacentes)

@@ -22,11 +22,11 @@ export interface SlidePreviewProps {
   nextSlide?: SlideData | null;
 }
 
-/** Largura de renderização (supersampling para a miniatura ficar nítida). */
-const RENDER_WIDTH = 240;
+/** Largura de renderização (supersampling calibrado para miniatura nítida e leve). */
+const RENDER_WIDTH = 160;
 
 const noop = () => {};
-const noopPatch = () => {};
+const noopTextSize = (_id: string, requested: number) => requested;
 
 const SlidePreviewImpl: React.FC<SlidePreviewProps> = ({
   doc,
@@ -106,7 +106,7 @@ const SlidePreviewImpl: React.FC<SlidePreviewProps> = ({
                       element={el}
                       isSelected={false}
                       onSelect={noop}
-                      onChange={noopPatch}
+                      onChange={noop}
                       onDragMoveSnap={noop}
                       onDragEndSnap={noop}
                     />
@@ -121,8 +121,8 @@ const SlidePreviewImpl: React.FC<SlidePreviewProps> = ({
                       isEditing={false}
                       onSelect={noop}
                       onDoubleClick={noop}
-                      onChange={noopPatch}
-                      onApplyTextSize={() => el.fontSize}
+                      onChange={noop}
+                      onApplyTextSize={noopTextSize}
                       onDragMoveSnap={noop}
                       onDragEndSnap={noop}
                     />
@@ -135,7 +135,7 @@ const SlidePreviewImpl: React.FC<SlidePreviewProps> = ({
                       element={el}
                       isSelected={false}
                       onSelect={noop}
-                      onChange={noopPatch}
+                      onChange={noop}
                       onDragMoveSnap={noop}
                       onDragEndSnap={noop}
                     />
@@ -147,7 +147,7 @@ const SlidePreviewImpl: React.FC<SlidePreviewProps> = ({
                     element={el}
                     isSelected={false}
                     onSelect={noop}
-                    onChange={noopPatch}
+                    onChange={noop}
                     onDragMoveSnap={noop}
                     onDragEndSnap={noop}
                   />

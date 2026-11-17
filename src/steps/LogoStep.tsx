@@ -14,7 +14,6 @@ import styles from './StepPanel.module.css';
 export const LogoStep: React.FC = () => {
   const addLogo = useEditor((s) => s.addLogo);
   const setLogoSize = useEditor((s) => s.setLogoSize);
-  const placeLogo = useEditor((s) => s.placeLogo);
   const removeElement = useEditor((s) => s.removeElement);
   const logo = useEditor((s) => s.doc.elements.find((e): e is LogoEl => e.kind === 'logo') ?? null);
 
@@ -92,60 +91,12 @@ export const LogoStep: React.FC = () => {
                   key={sz}
                   variant="secondary"
                   size="sm"
+                  fullWidth
                   onClick={() => setLogoSize(sz)}
                 >
                   {sz}
                 </Button>
               ))}
-            </div>
-          </div>
-
-          {/* Posicionamento Rápido */}
-          <div className={styles.section}>
-            <span style={{ fontSize: '15px', fontWeight: 700 }}>Posições Rápidas</span>
-            <div className={styles.buttonGrid}>
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => placeLogo('tl')}
-              >
-                Canto Sup. Esq.
-              </Button>
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => placeLogo('tr')}
-              >
-                Canto Sup. Dir.
-              </Button>
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => placeLogo('bl')}
-              >
-                Canto Inf. Esq.
-              </Button>
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => placeLogo('br')}
-              >
-                Canto Inf. Dir.
-              </Button>
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => placeLogo('bc')}
-              >
-                Centro Inferior
-              </Button>
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => placeLogo('center')}
-              >
-                Centro da Folha
-              </Button>
             </div>
           </div>
         </Card>

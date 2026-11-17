@@ -1,5 +1,46 @@
 # Plano de Implementação — Carrossel de Posts para Instagram
 
+> **Release v2.0.0 — Leva 5 (17/11/2026). PREVALECE SOBRE O HISTÓRICO ABAIXO.** As tasks
+> originais são registro, não backlog. A Fase 3 registra o que foi **concluído** nesta
+> release. Fonte de verdade: `AGENTS.md` §2.13 e §§2.20–2.22.
+>
+> **Verificação reproduzida:** `npm run typecheck` ✅ · `npm run test`
+> (**250 testes / 28 arquivos**) · `npm run build` ✅ · `npm run e2e`
+> (**109 passed / 3 skipped**, 112 execuções).
+>
+> ### Fase 3 — Leva 5: sincronização, tira e acessibilidade (concluída)
+>
+> - [x] 3.1 `syncEngine.ts` com guarda de reentrância; `primeEditorForSlide` registra
+>   `editorLoadedSlideId`; `activeSlideId` no state; `updateActiveSlide` com guardas
+>   `isApplyingState()` e divergência de id; `setActiveSlide`/`switchSingleToCarousel` com
+>   um único `set` (testes `syncEngine.test.ts`, `carouselStore.test.ts`).
+> - [x] 3.2 `applyFinishToAll` (padrão `true`) em `carouselStore.ts`, no
+>   `CarouselDraftBody` e no toggle da Etapa 6: propaga em edição/undo/redo/addSlide,
+>   desligar não apaga as texturas dos outros slides, e2e em `regressoes.spec.ts`.
+> - [x] 3.3 `SlidePreview` com `RENDER_WIDTH = 160`; `SlideTray` de uma linha, card `+`
+>   dashed no fim, overlay `role="status"`, foco na miniatura ativa; sem chevrons/contador.
+> - [x] 3.4 Reordenação por teclado (`Mover slide N…`, Alt+Setas) + robustez do GSAP
+>   (`LANDING_SAFETY_MS`, `resetMotionArtifacts`, física a partir do ponteiro, `scaleX/Y`),
+>   com `prefers-reduced-motion` preservado.
+> - [x] 3.5 `duplicateDraftRecord` remapeia `crossFrom` e normaliza crossover; `addSlide`
+>   limpa sangria residual e herda o finish; `Bug #01` coberto por e2e.
+> - [x] 3.6 `exportCarousel()` com `activateSlide` injetado; `flushTextEditing()` +
+>   `flushDraft()` antes de exportar; restauração do slide/guias/`isExporting` na ordem.
+> - [x] 3.7 Diálogos com `useDialogFocus`, lápis de renomear no Header, setas de mover
+>   slide, `aria-current="step"`, contraste dos tokens, Toast resgatável por foco.
+> - [x] 3.8 Verificação completa e atualização das specs e do `AGENTS.md`.
+>
+> **Tasks históricas superadas — não reintroduzir:** 1.4/8.1 (`debouncedLocalStorage`),
+> 1.6 (`carouselGC.ts` como abordagem de store persistido), 2.1 (`persist` em
+> `cuscuz-insta-kit:carrossel`), 2.8 (isolamento de chaves), 4.1 (`bootstrap()`),
+> 5.1–5.3 (`ModeSelector`), 6.1 (`useSlideThumb`), 6.2 (`text/plain` no DnD),
+> 11.2 (imports lazy da tira), Propriedades 17/20/21 (JSON no localStorage, chave legada,
+> cache de miniaturas) e os helpers `CREATE_SINGLE`/`CREATE_CAROUSEL` (substituídos por
+> `openCreateMenu`/`createSingle`/`pickCarousel`/`createCarousel`).
+>
+> **Pendência registrada:** "incrementar a tela antes de haver rascunhos" segue descartada;
+> nenhuma mudança de boot/home por conta dela nesta release.
+
 > **Auditoria de encerramento — 12/11/2026.** As tasks abaixo registram a
 > implementação inicial; não são backlog ativo. A revisão de código, testes e
 > specs confirmou concluídas as correções posteriores de posse explícita de

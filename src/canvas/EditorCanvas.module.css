@@ -12,11 +12,20 @@
   overflow: auto;
   /* Espaço da rolagem sempre reservado: o fit não oscila quando a barra aparece */
   scrollbar-gutter: stable;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
   padding: 24px;
-  /* Reserva a faixa do dock lateral (148px + right 16 + respiro) para o
-     conteúdo nunca rolar por baixo dele — alças incluídas */
-  --dock-reserve: 176px;
+  /* Reserva a faixa do dock lateral (210px + right 16 + respiro) para o
+     conteúdo nunca rolar por baixo dele — alças incluídas. Fonte única da
+     medida: `useCanvasFitWidth` lê este valor em tempo de execução. */
+  --dock-reserve: 236px;
   padding-right: calc(24px + var(--dock-reserve));
+}
+
+.container::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
 }
 
 .washiTape {
@@ -189,6 +198,8 @@
 @media (max-width: 640px) {
   .container {
     padding: 12px;
+    /* Dock estreito no mobile (mesma largura de 148px + right 8 + respiro) */
+    --dock-reserve: 176px;
     padding-right: calc(12px + var(--dock-reserve));
   }
 }

@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useId, useRef, useState } from 'react';
 import { SlidePreview } from '../../canvas/SlidePreview';
+import { useDialogFocus } from '../../hooks/useDialogFocus';
 import { convertActiveCarouselToSingle } from '../../lib/drafts/session';
 import { useCarousel } from '../../store/carouselStore';
 import { Button } from '../ui/Button';
@@ -21,6 +22,15 @@ export const SlidePickerDialog: React.FC<SlidePickerDialogProps> = ({
   const format = useCarousel((s) => s.format);
 
   const [selected, setSelected] = useState<SelectionOption>(activeSlideIndex);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const titleId = useId();
+  const messageId = useId();
+
+  useDialogFocus({
+    isOpen,
+    dialogRef,
+    onClose,
+  });
 
   useEffect(() => {
     if (isOpen) setSelected(activeSlideIndex);
@@ -36,14 +46,17 @@ export const SlidePickerDialog: React.FC<SlidePickerDialogProps> = ({
   return (
     <div className={styles.backdrop} onClick={onClose}>
       <div
+        ref={dialogRef}
+        tabIndex={-1}
         className={styles.modal}
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
         aria-label="Escolher slide para Post Único"
+        aria-describedby={messageId}
       >
-        <h3 className={styles.title}>Qual slide você quer manter? 🌽</h3>
-        <p className={styles.message}>
+        <h3 id={titleId} className={styles.title}>Qual slide você quer manter? 🌽</h3>
+        <p id={messageId} className={styles.message}>
           Escolha um dos slides pra levar pro post único.
         </p>
 

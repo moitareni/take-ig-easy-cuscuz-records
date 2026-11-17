@@ -1,19 +1,26 @@
 .tray {
+  position: relative;
   width: 100%;
-  /* Altura reservada desde o primeiro frame: a folha não "sobe" quando as
-     miniaturas terminam de carregar. O piso é menor que a altura natural. */
+  /* Altura fechada pelas miniaturas desde o primeiro frame (flex: 0 0 auto),
+     sem segunda linha de controles nem salto na transição de trayReady. */
   flex: 0 0 auto;
-  min-height: 120px;
   background-color: var(--c-surface-card);
   border-top: 3px solid var(--c-border);
-  padding: 8px 16px;
+  padding: 6px 16px;
   display: flex;
-  flex-direction: column;
-  gap: 8px;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
   z-index: 25;
 }
 
 .loading {
+  position: absolute;
+  right: 16px;
+  top: 6px;
+  pointer-events: none;
+  z-index: 2;
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -44,20 +51,23 @@
   }
 }
 
-.stripRow {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
 .thumbList {
   position: relative;
   flex: 1;
+  min-width: 0;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 10px;
   overflow-x: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
   padding: 4px 2px;
+}
+
+.thumbList::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
 }
 
 /* Fantasma tracejado do slot de destino durante a reordenação. */
@@ -73,6 +83,7 @@
   z-index: 0;
   opacity: 0;
   visibility: hidden;
+  transform-origin: 50% 50%;
   will-change: transform, opacity;
 }
 
@@ -108,10 +119,19 @@
   border: 3px solid var(--c-amarelo);
   border-radius: var(--radius-sm);
   background-color: var(--c-surface-muted);
-  box-shadow: 0 12px 0 #0b0500, 0 16px 28px rgba(11, 5, 0, 0.28);
+  /* Sombra no padrão adesivo da marca (0 4px 0, como o botão "+"), sem a
+     faixa preta alongada que o offset de 12px + blur de 28px produzia. */
+  box-shadow: 0 4px 0 #0b0500, 0 6px 14px rgba(11, 5, 0, 0.22);
   overflow: hidden;
+  /* Estado inicial oculto: o GSAP só revela (autoAlpha) depois de posicionar
+     o card no useLayoutEffect. Sem isso, um paint antes do set exibia o card
+     em (0,0) do viewport — o "pulinho" para o canto esquerdo do arraste. */
+  opacity: 0;
+  visibility: hidden;
   pointer-events: none;
   z-index: 90;
+  transform-origin: 50% 50%;
+  backface-visibility: hidden;
   will-change: transform;
 }
 
@@ -144,13 +164,12 @@
 
 .addThumbBtn {
   flex-shrink: 0;
-  width: 48px;
-  height: 64px;
-  border: 3px solid #0b0500;
+  box-sizing: border-box;
+  border: 3px dashed #0b0500;
   border-radius: var(--radius-sm);
   background-color: var(--c-amarelo);
   color: var(--c-preto);
-  box-shadow: 0 4px 0 #0b0500;
+  box-shadow: 0 2px 0 #0b0500;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -159,10 +178,25 @@
     box-shadow var(--duration-fast) var(--ease-bounce);
 }
 
+.addAspect34 {
+  width: 60px;
+  height: 80px;
+}
+
+.addAspect43 {
+  width: 88px;
+  height: 66px;
+}
+
+.addAspect11 {
+  width: 72px;
+  height: 72px;
+}
+
 .addThumbBtn:hover:not(:disabled) {
   background-color: var(--c-amarelo-quente);
   transform: translateY(-2px);
-  box-shadow: 0 6px 0 #0b0500;
+  box-shadow: 0 4px 0 #0b0500;
 }
 
 .addThumbBtn:active:not(:disabled) {
@@ -175,23 +209,35 @@
   cursor: not-allowed;
 }
 
-.controlsRow {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.counter {
-  font-family: var(--font-headline);
-  font-size: 15px;
-  color: var(--c-barro);
-}
-
 .actions {
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
+  margin-left: auto;
+}
+
+@media (max-width: 640px) {
+  .tray {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+    padding: 6px 12px;
+  }
+
+  .thumbList {
+    flex: 0 0 auto;
+    width: 100%;
+  }
+
+  .loading {
+    right: 12px;
+  }
+
+  .actions {
+    width: 100%;
+    margin-left: 0;
+    justify-content: flex-end;
+  }
 }

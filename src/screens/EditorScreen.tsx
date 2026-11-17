@@ -11,9 +11,12 @@ import { StepFooter } from '../components/StepFooter';
 import { Stepper } from '../components/Stepper';
 import { ZoomControls } from '../components/ZoomControls';
 import { IconButton } from '../components/ui/IconButton';
+import { ToolGroupTitle } from '../components/ui/ToolGroupTitle';
 import { DRAFT_COVER_WIDTH, setCoverCaptureProvider } from '../lib/drafts/cover';
+import { flushDraft } from '../lib/drafts/session';
 import { exportPost } from '../lib/export';
 import { CarouselExportError, exportCarousel } from '../lib/exportCarousel';
+import { usePasteImage } from '../lib/pasteImage';
 import { useKeyboardShortcuts } from '../lib/shortcuts';
 import { BackgroundStep } from '../steps/BackgroundStep';
 import { DecorationStep } from '../steps/DecorationStep';
@@ -21,8 +24,8 @@ import { ImageStep } from '../steps/ImageStep';
 import { LogoStep } from '../steps/LogoStep';
 import { TextStep } from '../steps/TextStep';
 import { TextureStep } from '../steps/TextureStep';
-import { useCarousel } from '../store/carouselStore';
-import { redo, undo, useEditor } from '../store/editorStore';
+import { loadSlideIntoEditor, useCarousel } from '../store/carouselStore';
+import { flushTextEditing, redo, undo, useEditor } from '../store/editorStore';
 import type { AlignMode } from '../types';
 import styles from '../App.module.css';
 
@@ -39,6 +42,8 @@ export const EditorScreen: React.FC = () => {
 
   // Ativa atalhos de teclado (Ctrl+Z, Delete, Setas, etc.)
   useKeyboardShortcuts();
+  // Ctrl+V com imagem na área de transferência cola na folha ativa
+  usePasteImage();
 
   // A capa do rascunho é a folha em miniatura: o provedor usa o stage ativo.
   useEffect(() => {
@@ -53,21 +58,29 @@ export const EditorScreen: React.FC = () => {
         carousel.mode === 'carousel' ? carousel.format : (useEditor.getState().doc.format ?? '3:4');
       const { width: postW, height: postH } = getPostDimensions(format);
 
-      // A captura precisa esconder Transformer/editor/guias, mas NÃO pode
-      // roubar a seleção de quem está editando (a capa também é gerada no
-      // autosave). Só devolve o que a captura mexeu — e nunca o `step`, que a
-      // usuária pode ter mudado durante os 50ms (ex.: clicando em "Próximo").
+      // A captura precisa esconder guias e eventuais textareas in-place, mas NÃO pode
+      // mexer em `layoutGuides.visible` ou `selectedIds` no store enquanto a usuária
+      // edita (evita flicker visual e corrida com presets de logo).
       const before = useEditor.getState();
       const snapshot = {
         selectedIds: before.selectedIds,
         selectedId: before.selectedId,
         editingId: before.editingId,
-        guidesVisible: before.layoutGuides.visible,
       };
-      before.select(null);
-      before.setEditing(null);
-      before.setGuidesVisible(false);
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      const needsReactHide = snapshot.editingId !== null;
+      if (needsReactHide) {
+        before.select(null);
+        before.setEditing(null);
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+
+      const guidesGroup = stage.findOne('.editor-guides-group');
+      const guidesWasVisible = guidesGroup?.visible() ?? false;
+      const guidesLayer = guidesGroup?.getLayer() ?? null;
+      if (guidesGroup && guidesWasVisible) {
+        guidesGroup.visible(false);
+        guidesLayer?.draw();
+      }
 
       try {
         const dataUrl = stage.toDataURL({
@@ -83,13 +96,18 @@ export const EditorScreen: React.FC = () => {
       } catch {
         return null;
       } finally {
-        useEditor.setState((state) => ({
-          ...(state.selectedIds.length === 0
-            ? { selectedIds: snapshot.selectedIds, selectedId: snapshot.selectedId }
-            : {}),
-          ...(state.editingId === null ? { editingId: snapshot.editingId } : {}),
-          layoutGuides: { ...state.layoutGuides, visible: snapshot.guidesVisible },
-        }));
+        if (guidesGroup && guidesWasVisible) {
+          guidesGroup.visible(true);
+          guidesLayer?.draw();
+        }
+        if (needsReactHide) {
+          useEditor.setState((state) => ({
+            ...(state.selectedIds.length === 0
+              ? { selectedIds: snapshot.selectedIds, selectedId: snapshot.selectedId }
+              : {}),
+            ...(state.editingId === null ? { editingId: snapshot.editingId } : {}),
+          }));
+        }
       }
     });
     return () => setCoverCaptureProvider(null);
@@ -115,8 +133,10 @@ export const EditorScreen: React.FC = () => {
       setIsExporting(true);
       // Desmarca qualquer elemento ativo para que o Transformer não apareça no PNG
       select(null);
-      // Fecha a edição in-place (as camadas de texto se escondem ao editar)
+      // Fecha e confirma a edição in-place antes do flush e da exportação
       useEditor.getState().setEditing(null);
+      flushTextEditing();
+      await flushDraft();
       // Esconde as guias de layout para que não vazem para o PNG
       useEditor.getState().setGuidesVisible(false);
 
@@ -158,13 +178,19 @@ export const EditorScreen: React.FC = () => {
       return;
     }
 
-    const { slides, format, activeSlideIndex: originalActiveIndex } = useCarousel.getState();
     const guidesWereVisible = useEditor.getState().layoutGuides.visible;
+    let originalActiveIndex = useCarousel.getState().activeSlideIndex;
 
     try {
-      useCarousel.getState().setExporting({ current: 0, total: slides.length });
       useEditor.getState().select(null);
       useEditor.getState().setEditing(null);
+      flushTextEditing();
+      await flushDraft();
+
+      const { slides, format, activeSlideIndex } = useCarousel.getState();
+      originalActiveIndex = activeSlideIndex;
+
+      useCarousel.getState().setExporting({ current: 0, total: slides.length });
       useEditor.getState().setGuidesVisible(false);
 
       await exportCarousel({
@@ -172,6 +198,10 @@ export const EditorScreen: React.FC = () => {
         format,
         stage,
         stageDisplayWidth: displayWidth,
+        activateSlide: (slide, index) => {
+          useCarousel.setState({ activeSlideIndex: index });
+          loadSlideIntoEditor(slide);
+        },
         onProgress: (current, total) =>
           useCarousel.getState().setExporting({ current, total }),
       });
@@ -184,10 +214,10 @@ export const EditorScreen: React.FC = () => {
         .getState()
         .showToast('error', `Erro ao exportar o slide${slideNum} do carrossel 😵 Tente novamente.`);
     } finally {
-      useCarousel.getState().setExporting(null);
-      if (guidesWereVisible) useEditor.getState().setGuidesVisible(true);
-      // Recarrega o slide que estava ativo antes da exportação
+      // Recarrega o slide ativo antes de desligar `isExporting`, para o autosave não capturar índice temporário.
       useCarousel.getState().setActiveSlide(originalActiveIndex);
+      if (guidesWereVisible) useEditor.getState().setGuidesVisible(true);
+      useCarousel.getState().setExporting(null);
     }
   };
 
@@ -234,19 +264,22 @@ export const EditorScreen: React.FC = () => {
               <BackgroundMirrorToolbar />
               <AlignToolbar onAlignToPage={handleAlign} />
               <GuideToolbar />
-              <div className={styles.dockHistory} role="group" aria-label="Histórico de ações">
-                <IconButton
-                  icon={<Undo2 size={18} strokeWidth={2.5} />}
-                  label="Desfazer (Ctrl+Z)"
-                  size="sm"
-                  onClick={() => undo()}
-                />
-                <IconButton
-                  icon={<Redo2 size={18} strokeWidth={2.5} />}
-                  label="Refazer (Ctrl+Shift+Z)"
-                  size="sm"
-                  onClick={() => redo()}
-                />
+              <div className={styles.dockHistoryCard}>
+                <ToolGroupTitle label="Histórico" />
+                <div className={styles.dockHistory} role="group" aria-label="Histórico de ações">
+                  <IconButton
+                    icon={<Undo2 size={18} strokeWidth={2.5} />}
+                    label="Desfazer (Ctrl+Z)"
+                    size="sm"
+                    onClick={() => undo()}
+                  />
+                  <IconButton
+                    icon={<Redo2 size={18} strokeWidth={2.5} />}
+                    label="Refazer (Ctrl+Shift+Z)"
+                    size="sm"
+                    onClick={() => redo()}
+                  />
+                </div>
               </div>
             </aside>
           </section>

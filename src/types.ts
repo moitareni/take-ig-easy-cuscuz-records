@@ -40,6 +40,8 @@ export interface TextEl extends BaseEl {
   uppercase: boolean;
   color: BrandColor;
   brandEffect: boolean;
+  /** Cor opcional do traçado do "Texto com borda" (padrão: creme). */
+  brandEffectColor?: BrandColor;
   border: BorderKind;
   /**
    * Largura da área de texto em px do post (área útil de quebra, sem os pads

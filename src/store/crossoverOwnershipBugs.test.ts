@@ -6,6 +6,7 @@ import {
 } from '../lib/crossover';
 import { loadSlideIntoEditor, useCarousel } from './carouselStore';
 import { defaultFinish, emptyDoc, useEditor } from './editorStore';
+import { installEditorCarouselSync } from './syncEngine';
 import type { El, FinishState, SlideData } from '../types';
 
 /**
@@ -67,12 +68,7 @@ const withElements = (base: SlideData, elements: El[]): SlideData => ({
 });
 
 // Igual ao main.tsx: o doc do editor volta para o slide dono a cada mudança.
-useEditor.subscribe((state, prev) => {
-  const carousel = useCarousel.getState();
-  if (carousel.mode !== 'carousel') return;
-  if (state.doc === prev.doc && state.finish === prev.finish) return;
-  carousel.updateActiveSlide(state.doc, state.finish);
-});
+installEditorCarouselSync();
 
 const install = (slides: SlideData[], active = 0): void => {
   useCarousel.setState({ mode: 'carousel', slides, activeSlideIndex: active, format: '3:4' });

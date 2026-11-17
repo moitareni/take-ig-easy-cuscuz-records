@@ -31,7 +31,7 @@ import { getUserImageEntry } from '../lib/userImages';
 import { useCarousel } from '../store/carouselStore';
 import { setTextBoxMeasurer, useEditor } from '../store/editorStore';
 
-import type { AlignMode, Box, DecorationEl, El, ImageEl, LogoEl, TextEl } from '../types';
+import type { AlignMode, Box, El, TextEl } from '../types';
 import { CrossoverMirrorNode } from './CrossoverMirrorNode';
 import { MirrorTransformerEl } from './mirrorTransformer';
 import { useCanvasFitWidth } from './hooks/useCanvasFitWidth';
@@ -539,85 +539,88 @@ export const EditorCanvas = forwardRef<EditorCanvasHandle>((_props, ref) => {
   );
 
   // Lógica de imã (snap) no centro + nas guias de layout durante o arrasto
-  const handleDragMoveSnap = (node: Konva.Node) => {
-    if (!layerRef.current) return;
-    // Seleção múltipla: só o líder roda o snap, sobre a caixa da UNIÃO (a do início
-    // do arraste deslocada pelo quanto o líder já andou) — o conjunto não deforma.
-    const g = groupDragRef.current;
-    const isLeader = !!g && String(node.id()) === g.leaderId;
-    const box: Box =
-      g && isLeader
-        ? {
-            ...g.startBox,
-            x: g.startBox.x + (node.x() - g.leaderStart.x),
-            y: g.startBox.y + (node.y() - g.leaderStart.y),
-          }
-        : node.getClientRect({ relativeTo: layerRef.current });
-    const snap = snapToCenter(box, postW, postH, 16);
+  const handleDragMoveSnap = useCallback(
+    (node: Konva.Node) => {
+      if (!layerRef.current) return;
+      // Seleção múltipla: só o líder roda o snap, sobre a caixa da UNIÃO (a do início
+      // do arraste deslocada pelo quanto o líder já andou) — o conjunto não deforma.
+      const g = groupDragRef.current;
+      const isLeader = !!g && String(node.id()) === g.leaderId;
+      const box: Box =
+        g && isLeader
+          ? {
+              ...g.startBox,
+              x: g.startBox.x + (node.x() - g.leaderStart.x),
+              y: g.startBox.y + (node.y() - g.leaderStart.y),
+            }
+          : node.getClientRect({ relativeTo: layerRef.current });
+      const snap = snapToCenter(box, postW, postH, 16);
 
-    let dx = snap.dx;
-    let dy = snap.dy;
-    let v = snap.v;
-    let h = snap.h;
+      let dx = snap.dx;
+      let dy = snap.dy;
+      let v = snap.v;
+      let h = snap.h;
 
-    // Ímã nas guias visíveis (margens/centro/terços), aplicado sobre a
-    // posição já ajustada pelo snap central.
-    if (layoutGuides.visible && (layoutGuides.showMargins || layoutGuides.showCenters || layoutGuides.showThirds)) {
-      const shifted = { ...box, x: box.x + dx, y: box.y + dy };
-      const gsnap = snapToGuides(
-        shifted,
-        postW,
-        postH,
-        {
-          margin: layoutGuides.margin,
-          useMargins: layoutGuides.showMargins,
-          useCenters: layoutGuides.showCenters,
-          useThirds: layoutGuides.showThirds,
-        },
-        GUIDE_SNAP_THRESHOLD
-      );
-      dx += gsnap.dx;
-      dy += gsnap.dy;
-    }
+      // Ímã nas guias visíveis (margens/centro/terços), aplicado sobre a
+      // posição já ajustada pelo snap central.
+      if (layoutGuides.visible && (layoutGuides.showMargins || layoutGuides.showCenters || layoutGuides.showThirds)) {
+        const shifted = { ...box, x: box.x + dx, y: box.y + dy };
+        const gsnap = snapToGuides(
+          shifted,
+          postW,
+          postH,
+          {
+            margin: layoutGuides.margin,
+            useMargins: layoutGuides.showMargins,
+            useCenters: layoutGuides.showCenters,
+            useThirds: layoutGuides.showThirds,
+          },
+          GUIDE_SNAP_THRESHOLD
+        );
+        dx += gsnap.dx;
+        dy += gsnap.dy;
+      }
 
-    if (dx !== 0) {
-      node.x(node.x() + dx);
-    }
-    if (dy !== 0) {
-      node.y(node.y() + dy);
-    }
+      if (dx !== 0) {
+        node.x(node.x() + dx);
+      }
+      if (dy !== 0) {
+        node.y(node.y() + dy);
+      }
 
-    // Seguidores: mesma translação do líder desde o início (já com o snap aplicado).
-    if (g && isLeader) {
-      const stage = stageRef.current;
-      const ddx = node.x() - g.leaderStart.x;
-      const ddy = node.y() - g.leaderStart.y;
-      g.starts.forEach((s, id) => {
-        if (id === g.leaderId) return;
-        stage?.findOne(`#${id}`)?.position({ x: s.x + ddx, y: s.y + ddy });
-      });
-    }
+      // Seguidores: mesma translação do líder desde o início (já com o snap aplicado).
+      if (g && isLeader) {
+        const stage = stageRef.current;
+        const ddx = node.x() - g.leaderStart.x;
+        const ddy = node.y() - g.leaderStart.y;
+        g.starts.forEach((s, id) => {
+          if (id === g.leaderId) return;
+          stage?.findOne(`#${id}`)?.position({ x: s.x + ddx, y: s.y + ddy });
+        });
+      }
 
-    // Zona de Sangria bidirecional (80px na borda esquerda e/ou direita) em Modo Carrossel
-    const cState = useCarousel.getState();
-    if (cState.mode === 'carousel' && cState.slides.length > 1) {
-      const hasPrev = cState.activeSlideIndex > 0;
-      const hasNext = cState.activeSlideIndex < cState.slides.length - 1;
-      const nodeRect = node.getClientRect({ relativeTo: layerRef.current });
-      const nearLeft = hasPrev && nodeRect.x < CROSSOVER_ZONE && node.x() < postW / 2;
-      const nearRight =
-        hasNext && nodeRect.x + nodeRect.width > postW - CROSSOVER_ZONE && node.x() > postW / 2;
-      setCrossoverHint((prev) =>
-        prev.left === nearLeft && prev.right === nearRight
-          ? prev
-          : { left: nearLeft, right: nearRight },
-      );
-    } else if (crossoverHint.left || crossoverHint.right) {
-      setCrossoverHint({ left: false, right: false });
-    }
+      // Zona de Sangria bidirecional (80px na borda esquerda e/ou direita) em Modo Carrossel
+      const cState = useCarousel.getState();
+      if (cState.mode === 'carousel' && cState.slides.length > 1) {
+        const hasPrev = cState.activeSlideIndex > 0;
+        const hasNext = cState.activeSlideIndex < cState.slides.length - 1;
+        const nodeRect = node.getClientRect({ relativeTo: layerRef.current });
+        const nearLeft = hasPrev && nodeRect.x < CROSSOVER_ZONE && node.x() < postW / 2;
+        const nearRight =
+          hasNext && nodeRect.x + nodeRect.width > postW - CROSSOVER_ZONE && node.x() > postW / 2;
+        setCrossoverHint((prev) =>
+          prev.left === nearLeft && prev.right === nearRight
+            ? prev
+            : { left: nearLeft, right: nearRight },
+        );
+      } else {
+        setCrossoverHint((prev) => (prev.left || prev.right ? { left: false, right: false } : prev));
+      }
 
-    setGuides({ v, h });
-  };
+      setGuides({ v, h });
+    },
+    [postW, postH, layoutGuides],
+  );
   // A ponte de eventos é vinculada só no mount (deps []): o proxy-drag usa
   // sempre a closure mais recente do snap via ref.
   handleDragMoveSnapRef.current = handleDragMoveSnap;
@@ -631,49 +634,69 @@ export const EditorCanvas = forwardRef<EditorCanvasHandle>((_props, ref) => {
   );
 
   /** Commit por nó, silenciado quando o conjunto está comitando em lote (arraste/transformação). */
-  const changeEl = (id: string, patch: Partial<El>) => {
-    if (groupDragRef.current || groupXformRef.current) return;
-    let nextPatch = patch;
-    if ('x' in patch && useCarousel.getState().mode === 'carousel') {
-      const cState = useCarousel.getState();
-      const hasPrev = cState.activeSlideIndex > 0;
-      const hasNext = cState.activeSlideIndex < cState.slides.length - 1;
-      const el = doc.elements.find((e) => e.id === id);
-      if (hasPrev || hasNext) {
-        const node = stageRef.current?.findOne(`#${id}`);
-        const nodeRect =
-          node && layerRef.current ? node.getClientRect({ relativeTo: layerRef.current }) : null;
-        const centerX = patch.x ?? (node ? node.x() : el?.x ?? postW / 2);
-        const elementLeftEdge = nodeRect ? nodeRect.x : centerX;
-        const elementRightEdge = nodeRect ? nodeRect.x + nodeRect.width : centerX;
-        const isNearLeftEdge =
-          hasPrev &&
-          ((elementLeftEdge < 0 && elementRightEdge > 0) ||
-            (elementLeftEdge < CROSSOVER_ZONE && centerX < postW / 2));
-        const isNearRightEdge =
-          hasNext &&
-          ((elementLeftEdge < postW && elementRightEdge > postW) ||
-            (elementRightEdge > postW - CROSSOVER_ZONE && centerX > postW / 2));
-        if (isNearLeftEdge || isNearRightEdge) {
-          nextPatch = { ...patch, crossover: true };
+  const changeEl = useCallback(
+    (id: string, patch: Partial<El>) => {
+      if (groupDragRef.current || groupXformRef.current) return;
+      let nextPatch = patch;
+      if ('x' in patch && useCarousel.getState().mode === 'carousel') {
+        const cState = useCarousel.getState();
+        const hasPrev = cState.activeSlideIndex > 0;
+        const hasNext = cState.activeSlideIndex < cState.slides.length - 1;
+        const el = useEditor.getState().doc.elements.find((e) => e.id === id);
+        if (hasPrev || hasNext) {
+          const node = stageRef.current?.findOne(`#${id}`);
+          const nodeRect =
+            node && layerRef.current ? node.getClientRect({ relativeTo: layerRef.current }) : null;
+          const centerX = patch.x ?? (node ? node.x() : el?.x ?? postW / 2);
+          const elementLeftEdge = nodeRect ? nodeRect.x : centerX;
+          const elementRightEdge = nodeRect ? nodeRect.x + nodeRect.width : centerX;
+          const isNearLeftEdge =
+            hasPrev &&
+            ((elementLeftEdge < 0 && elementRightEdge > 0) ||
+              (elementLeftEdge < CROSSOVER_ZONE && centerX < postW / 2));
+          const isNearRightEdge =
+            hasNext &&
+            ((elementLeftEdge < postW && elementRightEdge > postW) ||
+              (elementRightEdge > postW - CROSSOVER_ZONE && centerX > postW / 2));
+          if (isNearLeftEdge || isNearRightEdge) {
+            nextPatch = { ...patch, crossover: true };
+          } else if (el?.crossover) {
+            nextPatch = { ...patch, crossover: false };
+          }
         } else if (el?.crossover) {
           nextPatch = { ...patch, crossover: false };
         }
-      } else if (el?.crossover) {
-        nextPatch = { ...patch, crossover: false };
       }
-    }
-    updateElement(id, nextPatch);
-  };
+      updateElement(id, nextPatch);
+    },
+    [postW, updateElement],
+  );
   changeElRef.current = changeEl;
-  const applyTextSize = (id: string, requested: number) =>
-    groupXformRef.current ? requested : setTextSize(id, requested);
+  const applyTextSize = useCallback(
+    (id: string, requested: number) =>
+      groupXformRef.current ? requested : setTextSize(id, requested),
+    [setTextSize],
+  );
 
   /** Seleção: Ctrl/Cmd/Shift soma/remove; clique simples seleciona só este. */
-  const handleSelect = (id: string, e?: { evt?: MouseEvent | TouchEvent }) => {
-    if (isMultiModifier(e?.evt)) toggleSelect(id);
-    else select(id);
-  };
+  const handleSelect = useCallback(
+    (id: string, e?: Konva.KonvaEventObject<Event>) => {
+      if (isMultiModifier(e?.evt as MouseEvent | TouchEvent | undefined)) toggleSelect(id);
+      else select(id);
+    },
+    [select, toggleSelect],
+  );
+
+  const handleDoubleClickText = useCallback(
+    (id: string, e?: Konva.KonvaEventObject<unknown>) => {
+      if (isMultiModifier(e?.evt as MouseEvent) || useEditor.getState().selectedIds.length > 1) {
+        return;
+      }
+      select(null);
+      setEditing(id);
+    },
+    [select, setEditing],
+  );
 
   const notifyGroupLimit = (message: string | null) => {
     if (!message) return;
@@ -726,10 +749,10 @@ export const EditorCanvas = forwardRef<EditorCanvasHandle>((_props, ref) => {
     }, 0);
   };
 
-  const handleDragEndSnap = () => {
+  const handleDragEndSnap = useCallback(() => {
     setGuides({ v: false, h: false });
     setCrossoverHint({ left: false, right: false });
-  };
+  }, []);
   handleDragEndSnapRef.current = handleDragEndSnap;
 
   const editingElement = doc.elements.find(
@@ -746,6 +769,8 @@ export const EditorCanvas = forwardRef<EditorCanvasHandle>((_props, ref) => {
     <>
     <div
       ref={containerRef}
+      role="region"
+      aria-label="Palco da arte"
       className={`${styles.container} ${panning ? styles.panning : ''} ${panActive ? styles.panActive : ''}`}
       onMouseDownCapture={handlePanMouseDown}
     >
@@ -811,10 +836,10 @@ export const EditorCanvas = forwardRef<EditorCanvasHandle>((_props, ref) => {
                 return (
                   <DecorationNode
                     key={el.id}
-                    element={el as DecorationEl}
+                    element={el}
                     isSelected={selectedIds.includes(el.id)}
-                    onSelect={(e) => handleSelect(el.id, e)}
-                    onChange={(patch) => changeEl(el.id, patch)}
+                    onSelect={handleSelect}
+                    onChange={changeEl}
                     onDragMoveSnap={handleDragMoveSnap}
                     onDragEndSnap={handleDragEndSnap}
                   />
@@ -824,17 +849,13 @@ export const EditorCanvas = forwardRef<EditorCanvasHandle>((_props, ref) => {
                 return (
                   <TextNode
                     key={el.id}
-                    element={el as TextEl}
+                    element={el}
                     isSelected={selectedIds.includes(el.id)}
                     isEditing={editingId === el.id}
-                    onSelect={(e) => handleSelect(el.id, e)}
-                    onDoubleClick={(e) => {
-                      if (isMultiModifier(e?.evt as MouseEvent) || selectedIds.length > 1) return;
-                      select(null);
-                      setEditing(el.id);
-                    }}
-                    onChange={(patch) => changeEl(el.id, patch)}
-                    onApplyTextSize={(req) => applyTextSize(el.id, req)}
+                    onSelect={handleSelect}
+                    onDoubleClick={handleDoubleClickText}
+                    onChange={changeEl}
+                    onApplyTextSize={applyTextSize}
                     onDragMoveSnap={handleDragMoveSnap}
                     onDragEndSnap={handleDragEndSnap}
                   />
@@ -844,10 +865,10 @@ export const EditorCanvas = forwardRef<EditorCanvasHandle>((_props, ref) => {
                 return (
                   <ImageNode
                     key={el.id}
-                    element={el as ImageEl}
+                    element={el}
                     isSelected={selectedIds.includes(el.id)}
-                    onSelect={(e) => handleSelect(el.id, e)}
-                    onChange={(patch) => changeEl(el.id, patch)}
+                    onSelect={handleSelect}
+                    onChange={changeEl}
                     onDragMoveSnap={handleDragMoveSnap}
                     onDragEndSnap={handleDragEndSnap}
                   />
@@ -857,10 +878,10 @@ export const EditorCanvas = forwardRef<EditorCanvasHandle>((_props, ref) => {
                 return (
                   <LogoNode
                     key={el.id}
-                    element={el as LogoEl}
+                    element={el}
                     isSelected={selectedIds.includes(el.id)}
-                    onSelect={(e) => handleSelect(el.id, e)}
-                    onChange={(patch) => changeEl(el.id, patch)}
+                    onSelect={handleSelect}
+                    onChange={changeEl}
                     onDragMoveSnap={handleDragMoveSnap}
                     onDragEndSnap={handleDragEndSnap}
                   />
@@ -944,20 +965,22 @@ export const EditorCanvas = forwardRef<EditorCanvasHandle>((_props, ref) => {
             />
             </Group>
 
-            {/* Guias de layout estilo Photoshop (margens/centro/terços) */}
-            {layoutGuides.visible && (
-              <LayoutGuides
-                margin={layoutGuides.margin}
-                showMargins={layoutGuides.showMargins}
-                showCenters={layoutGuides.showCenters}
-                showThirds={layoutGuides.showThirds}
-                postWidth={postW}
-                postHeight={postH}
-              />
-            )}
+            <Group name="editor-guides-group">
+              {/* Guias de layout estilo Photoshop (margens/centro/terços) */}
+              {layoutGuides.visible && (
+                <LayoutGuides
+                  margin={layoutGuides.margin}
+                  showMargins={layoutGuides.showMargins}
+                  showCenters={layoutGuides.showCenters}
+                  showThirds={layoutGuides.showThirds}
+                  postWidth={postW}
+                  postHeight={postH}
+                />
+              )}
 
-            {/* Linhas guias de snap no centro */}
-            <SnapGuides v={guides.v} h={guides.h} postWidth={postW} postHeight={postH} />
+              {/* Linhas guias de snap no centro */}
+              <SnapGuides v={guides.v} h={guides.h} postWidth={postW} postHeight={postH} />
+            </Group>
           </Layer>
         </Stage>
         </div>
@@ -1011,6 +1034,7 @@ export const EditorCanvas = forwardRef<EditorCanvasHandle>((_props, ref) => {
         âncoras são repostos no palco principal pela ponte. */}
     <div
       ref={overlayWrapRef}
+      aria-hidden="true"
       className={`${styles.handleOverlay} ${panActive ? styles.panActive : ''}`}
       onMouseDownCapture={handlePanMouseDown}
     >

@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { AlertCircle, ArrowLeft, Check, Download } from 'lucide-react';
+import { AlertCircle, ArrowLeft, Check, Download, Pencil } from 'lucide-react';
 import { POST_FORMATS, type PostFormat } from '../brand/brand';
 import { closeDraftToHome, renameActiveDraft, retrySave } from '../lib/drafts/session';
 import { switchSingleToCarousel, useCarousel } from '../store/carouselStore';
@@ -37,6 +37,7 @@ export const Header: React.FC<HeaderProps> = ({
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState('');
   const closingTitleRef = useRef(false);
+  const renameBtnRef = useRef<HTMLButtonElement>(null);
 
   const showToast = useEditor((s) => s.showToast);
 
@@ -57,10 +58,13 @@ export const Header: React.FC<HeaderProps> = ({
     setIsEditingTitle(true);
   };
 
-  const commitTitleEdit = () => {
+  const commitTitleEdit = (restoreFocus = false) => {
     if (closingTitleRef.current) return;
     closingTitleRef.current = true;
     setIsEditingTitle(false);
+    if (restoreFocus) {
+      requestAnimationFrame(() => renameBtnRef.current?.focus());
+    }
     const clean = titleDraft.replace(/\s+/g, ' ').trim();
     if (!clean || clean === activeTitle) return;
     void renameActiveDraft(clean);
@@ -69,6 +73,7 @@ export const Header: React.FC<HeaderProps> = ({
   const cancelTitleEdit = () => {
     closingTitleRef.current = true;
     setIsEditingTitle(false);
+    requestAnimationFrame(() => renameBtnRef.current?.focus());
   };
 
   const handleModeChange = (next: ModeValue) => {
@@ -123,11 +128,11 @@ export const Header: React.FC<HeaderProps> = ({
                   aria-label="Nome do projeto"
                   onFocus={(event) => event.currentTarget.select()}
                   onChange={(event) => setTitleDraft(event.target.value)}
-                  onBlur={commitTitleEdit}
+                  onBlur={() => commitTitleEdit(false)}
                   onKeyDown={(event) => {
                     if (event.key === 'Enter') {
                       event.preventDefault();
-                      commitTitleEdit();
+                      commitTitleEdit(true);
                     } else if (event.key === 'Escape') {
                       event.preventDefault();
                       cancelTitleEdit();
@@ -136,13 +141,25 @@ export const Header: React.FC<HeaderProps> = ({
                 />
               </div>
             ) : (
-              <h1
-                className={styles.title}
-                title={activeTitle || 'Rascunho'}
-                onClick={startEditingTitle}
-              >
-                {activeTitle || 'Rascunho'}
-              </h1>
+              <div className={styles.titleRow}>
+                <h1
+                  className={styles.title}
+                  title={activeTitle || 'Rascunho'}
+                  onClick={startEditingTitle}
+                >
+                  {activeTitle || 'Rascunho'}
+                </h1>
+                <button
+                  ref={renameBtnRef}
+                  type="button"
+                  className={styles.renameBtn}
+                  onClick={startEditingTitle}
+                  aria-label="Renomear"
+                  title="Renomear"
+                >
+                  <Pencil size={14} strokeWidth={2.25} aria-hidden="true" />
+                </button>
+              </div>
             )}
             <span className={styles.subtitle}>
               <FormatGlyph format={activeFormat} size={13} />

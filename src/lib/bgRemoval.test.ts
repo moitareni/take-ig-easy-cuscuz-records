@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { bgUsesWebGPU } from './bgRemoval';
 import {
   applyCutoutData,
   boxBlurPlane,
@@ -194,5 +195,33 @@ describe('fromHalfFloat', () => {
     expect(fromHalfFloat(0x3800)).toBeCloseTo(0.5, 5);
     expect(fromHalfFloat(0x4000)).toBeCloseTo(2, 5);
     expect(fromHalfFloat(0xbc00)).toBeCloseTo(-1, 5);
+  });
+});
+
+describe('bgUsesWebGPU', () => {
+  it('desabilita WebGPU no Firefox (usa wasm direto) e habilita em Chromium quando navigator.gpu existe', () => {
+    const origGpu = Reflect.get(navigator, 'gpu');
+    const origUa = navigator.userAgent;
+    try {
+      Object.defineProperty(navigator, 'gpu', { value: {}, configurable: true });
+      Object.defineProperty(navigator, 'userAgent', {
+        value: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:160.0) Gecko/20100101 Firefox/160.0',
+        configurable: true,
+      });
+      expect(bgUsesWebGPU()).toBe(false);
+
+      Object.defineProperty(navigator, 'userAgent', {
+        value: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36',
+        configurable: true,
+      });
+      expect(bgUsesWebGPU()).toBe(true);
+    } finally {
+      if (origGpu === undefined) {
+        Reflect.deleteProperty(navigator, 'gpu');
+      } else {
+        Object.defineProperty(navigator, 'gpu', { value: origGpu, configurable: true });
+      }
+      Object.defineProperty(navigator, 'userAgent', { value: origUa, configurable: true });
+    }
   });
 });

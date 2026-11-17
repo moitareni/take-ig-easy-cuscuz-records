@@ -1,5 +1,53 @@
 # Plano de Implementação: Cuscuz Records Insta Kit
 
+> **Release v2.0.0 — Leva 5 (17/11/2026). PREVALECE SOBRE O HISTÓRICO ABAIXO.**
+> As tasks antigas são registro de implementação, não backlog. A Fase 4 abaixo registra o
+> que foi **concluído** nesta release; as tasks históricas listadas ao fim deste bloco estão
+> **superadas** e não devem ser reabertas. Fonte de verdade: `AGENTS.md`.
+>
+> **Verificação reproduzida nesta árvore:** `npm run typecheck` ✅ · `npm run test`
+> (**250 testes / 28 arquivos**) · `npm run build` ✅ · `npm run e2e`
+> (**109 passed / 3 skipped**, 112 execuções).
+>
+> ### Fase 4 — Leva 5: qualidade, acessibilidade e sincronização (concluída)
+>
+> - [x] 4.1 Extrair a ponte editor↔carrossel para `src/store/syncEngine.ts` (`isApplyingState`,
+>   `withApplyingState`, `installEditorCarouselSync`), com guarda de reentrância e HMR-safe;
+>   teste `syncEngine.test.ts`.
+> - [x] 4.2 Consolidar sanitizadores em `src/lib/sanitize.ts` e criar `resetEditorFor()`;
+>   remover casts residuais de `editorStore.ts`; reexportar nomes antigos.
+> - [x] 4.3 Reestruturar `session.ts`: estado em `globalThis.__cuscuzDraftSession`, debounce
+>   200 ms, capa em 1,2 s, checkpoint síncrono no localStorage, listener `blur`, `try/catch`
+>   no flush e `.catch()` nos listeners, race de save por revisão. Testes `session.test.ts`,
+>   `repository.test.ts`.
+> - [x] 4.4 Limpar órfãos (`cleanupOrphanDraftIds`) e remapear `crossFrom` na duplicação de
+>   carrossel.
+> - [x] 4.5 Memoizar os seis nós do canvas com callbacks estabilizados (`id` primeiro);
+>   limitar folga do overlay a 160–320 px e unificar o patch do Konva; reduzir
+>   `RENDER_WIDTH` para 160.
+> - [x] 4.6 Colagem de imagem por Ctrl+V (`clipboardImages.ts`, `pasteImage.ts`,
+>   `usePasteImage()`); e2e em `image.spec.ts`.
+> - [x] 4.7 Foco em diálogos (`useDialogFocus.ts` em `ConfirmDialog`, `SlidePickerDialog` e
+>   diálogo de formato da home); `Button` como `forwardRef`; renomear por teclado no Header.
+> - [x] 4.8 Alternativas de teclado: `Mover slide N…`, Alt+Setas, `F2`/`Enter`, `[`/`]`,
+>   `+`/`-`; contraste dos tokens, `aria-current="step"`, toast resgatável por foco,
+>   `color-scheme: light`.
+> - [x] 4.9 Passo 4 com dois botões de criação + toggles `Tudo maiúsculo`/`Texto com borda`
+>   + `Cor da borda:`; cor do traçado configurável; remoção de "Posições Rápidas" e da grade
+>   "Margem (px)"; tira compacta, `applyFinishToAll` propagado/persistido.
+> - [x] 4.10 Scrollbars ocultas na área de trabalho com gutter estável; `Bug #01`
+>   (novo slide vazio no último slide de rascunho duplicado) e `Melhoria #01` cobertos por
+>   e2e; verificação completa.
+>
+> **Tasks históricas superadas pela Leva 5** (não reabrir): 2.3 (posicionamento por canto de
+> enfeites), 3.4 e 9.6 (persistência em localStorage / debounce 300–450 ms), 4.1 da Leva 4
+> (tesourinha na lista), 6.3 (7 posições rápidas da logo), 7.2 (opacidades 40/40), 10.2
+> (presets de margem na UI), 11.2/11.3 (seletor de formato no Header), 3.13 (prévias em
+> `<details>`) e a frase "os três botões de criação de texto" da Leva 4.
+>
+> **Pendência registrada:** "incrementar a tela antes de haver rascunhos" segue descartada
+> a pedido do Reni; nenhuma alteração de boot/home por conta dela nesta release.
+
 > **Auditoria de encerramento — 12/11/2026.** As tasks históricas abaixo são
 > registro de implementação, não backlog ativo. A revisão código × testes × specs
 > confirmou como concluídos os contratos de rascunhos IndexedDB, editor de seis

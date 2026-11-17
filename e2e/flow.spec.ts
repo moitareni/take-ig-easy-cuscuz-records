@@ -79,8 +79,8 @@ test.describe('Cuscuz Records Insta Kit - Fluxo Completo', () => {
     // etapas contém "p", então substring solta pega o botão errado)
     await page.getByRole('button', { name: 'P', exact: true }).click();
 
-    // Posiciona no Centro Inferior
-    await page.locator('button:has-text("Centro Inferior")').click();
+    // Alinha pela base usando a barra lateral de Opções do elemento (Posições Rápidas foram removidas)
+    await page.getByRole('button', { name: 'Alinhar à base da página' }).click();
 
     // Passo 6: acabamento é opcional e vem desligado por padrão (regra da marca)
     await page.locator('footer button:has-text("Próximo")').click();

@@ -1,5 +1,11 @@
 import type { CSSProperties } from 'react';
-import { BRAND_EFFECT, COLORS, FONT_BODY, FONT_HEADLINE } from '../brand/brand';
+import {
+  BRAND_EFFECT,
+  COLORS,
+  FONT_BODY,
+  FONT_HEADLINE,
+  getBrandEffectStrokeColor,
+} from '../brand/brand';
 import type { TextEl } from '../types';
 
 export interface EditorTextStyleOptions {
@@ -35,8 +41,9 @@ export function editorTextStyle(el: TextEl, opts: EditorTextStyleOptions): CSSPr
   };
 
   if (el.brandEffect) {
-    // Aproximação do traçado creme 2px + sombra projetada da marca.
-    style.WebkitTextStroke = `${BRAND_EFFECT.strokeOutside * scaleRatio}px ${BRAND_EFFECT.strokeColor}`;
+    // Aproximação do traçado 2px + sombra projetada da marca.
+    const strokeColor = getBrandEffectStrokeColor(el.brandEffectColor);
+    style.WebkitTextStroke = `${BRAND_EFFECT.strokeOutside * scaleRatio}px ${strokeColor}`;
     style.textShadow = `0px ${BRAND_EFFECT.shadowDistance * scaleRatio}px ${BRAND_EFFECT.shadowBlur * scaleRatio}px rgba(11, 5, 0, ${BRAND_EFFECT.shadowOpacity})`;
   }
 

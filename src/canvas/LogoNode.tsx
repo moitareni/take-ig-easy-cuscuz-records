@@ -8,14 +8,14 @@ import type { LogoEl } from '../types';
 export interface LogoNodeProps {
   element: LogoEl;
   isSelected: boolean;
-  /** Recebe o evento do Konva: Ctrl/Cmd/Shift soma/remove da seleção. */
-  onSelect: (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => void;
-  onChange: (patch: Partial<LogoEl>) => void;
+  /** Recebe o id e o evento do Konva: Ctrl/Cmd/Shift soma/remove da seleção. */
+  onSelect: (id: string, e: Konva.KonvaEventObject<Event>) => void;
+  onChange: (id: string, patch: Partial<LogoEl>) => void;
   onDragMoveSnap: (node: Konva.Node) => void;
   onDragEndSnap: () => void;
 }
 
-export const LogoNode: React.FC<LogoNodeProps> = ({
+const LogoNodeImpl: React.FC<LogoNodeProps> = ({
   element,
   onSelect,
   onChange,
@@ -46,14 +46,14 @@ export const LogoNode: React.FC<LogoNodeProps> = ({
       scaleX={element.scale}
       scaleY={element.scale}
       draggable
-      onClick={onSelect}
-      onTap={onSelect}
+      onClick={(e) => onSelect(element.id, e)}
+      onTap={(e) => onSelect(element.id, e)}
       onDragMove={(e) => {
         onDragMoveSnap(e.target);
       }}
       onDragEnd={(e) => {
         onDragEndSnap();
-        onChange({
+        onChange(element.id, {
           x: e.target.x(),
           y: e.target.y(),
         });
@@ -65,7 +65,7 @@ export const LogoNode: React.FC<LogoNodeProps> = ({
         // negativa), normalizamos para magnitude positiva aqui mesmo.
         const sx = node.scaleX();
         const sy = node.scaleY();
-        onChange({
+        onChange(element.id, {
           x: node.x(),
           y: node.y(),
           rotation: Math.round(node.rotation()),
@@ -75,3 +75,5 @@ export const LogoNode: React.FC<LogoNodeProps> = ({
     />
   );
 };
+
+export const LogoNode = React.memo(LogoNodeImpl);

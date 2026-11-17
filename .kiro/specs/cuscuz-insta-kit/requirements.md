@@ -1,6 +1,70 @@
 # Documento de Requisitos — Cuscuz Records Insta Kit
 
-> **Auditoria de implementação — 12/11/2026 (prevalece sobre todo o histórico abaixo).**
+> **Release v2.0.0 — Leva 5 (17/11/2026). PREVALECE SOBRE TODO O HISTÓRICO ABAIXO,
+> INCLUSIVE AS AUDITORIAS DE 12/11/2026.** `AGENTS.md` é a fonte de verdade operacional;
+> este bloco corrige os requisitos que mudaram depois da última auditoria. O texto antigo
+> permanece apenas como registro histórico — onde conflitar, prevalecem este bloco e o
+> `AGENTS.md` (em especial §§2.4, 2.7, 2.9, 2.10, 2.12–2.16 e 2.20–2.22).
+>
+> **Verificação desta árvore:** `npm run typecheck` ✅ · `npm run test` — **250 testes em
+> 28 arquivos** · `npm run build` ✅ · `npm run e2e` — **109 passed / 3 skipped** (112
+> execuções desktop + mobile). Os números antigos (215/23; 87/3 em 90 execuções) estão
+> superados.
+>
+> **Req. 3 (imagens)** — entrada acrescentada por **Ctrl/Cmd+V** (`usePasteImage` +
+> `clipboardImages.ts`): ignora texto/HTML/PDF, renomeia `image.png` → `Imagem colada.png`,
+> passa pelo pipeline usual (limite de 5, WebP), seleciona a imagem e abre o Passo 3. Não
+> cola dentro de campos de texto, com texto em edição ou com diálogo aberto. Arrastar e
+> soltar e o seletor de arquivos continuam valendo; a tesourinha da lista "Na folha" **não
+> existe** (remoção de fundo só pelo botão do card da imagem).
+>
+> **Req. 5 (texto)** — os botões de criação são **`+ Título` e `+ Texto`**; **`+ Texto com
+> borda` foi removido** e virou o toggle **`Texto com borda`** (`aria-pressed`) no card do
+> texto selecionado, ao lado de **`Tudo maiúsculo`**. Quando ativo, expõe **`Cor da borda:`**
+> com cinco cores (`TEXT_BORDER_COLORS`); o traçado configurável é `TextEl.brandEffectColor`
+> (padrão creme). O rótulo é **"Cor do texto"** (nunca "Cor da Marca") e "Caixa de destaque"
+> segue com a mesma altura dos swatches.
+>
+> **Req. 6 (logo)** — a seção **"Posições Rápidas" saiu** do `LogoStep`; o posicionamento é
+> pelo dock (`Alinhar à…`) ou pela action `placeLogo(preset)` do store (API mantida). P/M/G
+> continuam no painel. Presets `tl/tr/bl/br/tc/bc` seguem a margem ativa das guias (ou 0).
+>
+> **Req. 7 (textura)** — defaults reais: papel **50%**, craquelado **10%**, grão **M/60%**;
+> todos desligados por padrão. Botões **`Ativar todas as texturas`** / **`Desativar todas as
+> texturas`**. No carrossel, **`Aplicar em todos os slides`** (`applyFinishToAll`, padrão
+> `true`) propaga o `finish` por padrão e é **persistido no `CarouselDraftBody`** — o antigo
+> requisito "alteram somente o finish do slide ativo" está revogado.
+>
+> **Req. 10 (guias)** — a grade **"Margem (px)" (32/56/80/100) saiu da UI**; `setGuideMargin`
+> e `GUIDE_MARGIN_PRESETS` permanecem como contrato de dados/teste. O dock ganhou etiquetas
+> (`ToolGroupTitle`/`ToolSubgroupTitle`) e dois trios de alinhamento em 2 colunas (210 px no
+> desktop, 148 px no mobile, `--dock-reserve` 236/176).
+>
+> **Req. 12 (rascunhos)** — autosave com debounce de **200 ms** (era 450), recaptura de capa
+> em 1,2 s, checkpoint síncrono `cuscuz-insta-kit:pending-checkpoint` no localStorage (sem
+> binários) drenado no boot, `flushSession()` com `try/catch` + `.catch()` nos listeners de
+> `visibilitychange`/`pagehide`/`beforeunload`/**`blur`**. `cleanupOrphanDraftIds()` apaga
+> metas sem corpo e corpos sem meta; duplicar carrossel remapeia `crossFrom` e normaliza
+> crossover. A shell de estado da sessão é `globalThis.__cuscuzDraftSession`.
+>
+> **Req. 13 (UX/a11y)** — diálogos com foco inicial no botão seguro, focus trap e Escape
+> (`useDialogFocus`); lápis **`Renomear`** no Header do editor (Enter/Escape devolvem foco);
+> slides reordenáveis por **`Mover slide N para a esquerda/direita`** e **Alt+Setas**;
+> **`F2`/`Enter`** edita texto selecionado; **`[`/`]`** rotaciona ±5°; **`+`/`-`** escala ±5%;
+> Stepper com `aria-current="step"`; toast resgatável por foco e com fundo `#3f621a`
+> (≈7,1:1); `color-scheme: light`; scrollbars **ocultas na área de trabalho** com
+> `scrollbar-gutter: stable` (a barra amarela temática segue no `html`).
+>
+> **Req. 14 (novo — confiabilidade)** — ponte editor↔carrossel isolada em `syncEngine.ts`
+> com guarda de reentrância; sanitizadores unificados em `lib/sanitize.ts`; seis nós do canvas
+> com `React.memo` e callbacks com `id` como primeiro argumento; `exportCarousel()` recebe
+> `activateSlide` por injeção; overlay de alças limitado a 160–320 px de folga; remoção de
+> fundo com probe `shader-f16`, blacklist do Firefox, dispose de tensores e retry em wasm.
+>
+> **Histórico preservado:** o item "incrementar a tela antes de haver rascunhos" foi
+> **descartado** a pedido do Reni e segue sem implementação nesta release.
+
+> **Auditoria de implementação — 12/11/2026 (prevalece sobre todo o histórico abaixo, exceto pelo bloco da Leva 5 acima).**
 > Esta revisão confrontou requisitos, código e testes da árvore atual. `AGENTS.md`
 > continua a fonte de verdade operacional; este bloco corrige as contradições que
 > ainda restavam nas revisões de 10–11/11.

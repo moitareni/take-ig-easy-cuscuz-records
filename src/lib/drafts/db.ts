@@ -15,6 +15,27 @@ export const COVERS_STORE = 'covers';
 export const META_STORE = 'meta';
 
 let dbPromise: Promise<IDBDatabase> | null = null;
+let dbInstance: IDBDatabase | null = null;
+
+/**
+ * Retorna a instância aberta em cache (se houver) de forma síncrona.
+ * Permite que `beforeunload`/`pagehide` abram a transação IndexedDB no mesmo tick.
+ */
+export function getOpenEditorDbSync(): IDBDatabase | null {
+  return dbInstance;
+}
+
+export function resetEditorDbForTests(): void {
+  if (dbInstance) {
+    try {
+      dbInstance.close();
+    } catch {
+      // Ignora erro ao fechar em testes.
+    }
+    dbInstance = null;
+  }
+  dbPromise = null;
+}
 
 export function openEditorDb(): Promise<IDBDatabase> {
   if (dbPromise) return dbPromise;
@@ -67,8 +88,14 @@ export function openEditorDb(): Promise<IDBDatabase> {
       }
       settled = true;
       const db = request.result;
+      dbInstance = db;
       db.onversionchange = () => {
         db.close();
+        if (dbInstance === db) dbInstance = null;
+        dbPromise = null;
+      };
+      db.onclose = () => {
+        if (dbInstance === db) dbInstance = null;
         dbPromise = null;
       };
       resolve(db);
@@ -78,6 +105,7 @@ export function openEditorDb(): Promise<IDBDatabase> {
   });
 
   dbPromise.catch(() => {
+    dbInstance = null;
     dbPromise = null;
   });
 

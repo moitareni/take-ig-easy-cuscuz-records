@@ -30,9 +30,13 @@ export function useCanvasFitWidth(containerRef: RefObject<HTMLElement | null>) {
     const pad = 24;
     // Folga para a parte fixa (6px de cada lado) do pad do palco.
     const slack = 14;
-    // Reserva a faixa do dock lateral (mesmo valor de --dock-reserve no CSS
-    // do .container) para o fit caber sem rolar por baixo do dock
-    const dockReserve = 176;
+    // Reserva a faixa do dock lateral para o fit caber sem rolar por baixo
+    // dele. A medida vive no CSS (--dock-reserve no .container), que muda de
+    // acordo com a largura da tela; o fallback cobre ambientes sem o valor.
+    const cssReserve = parseFloat(
+      getComputedStyle(el).getPropertyValue('--dock-reserve').trim(),
+    );
+    const dockReserve = Number.isFinite(cssReserve) && cssReserve > 0 ? cssReserve : 176;
     const maxW = clientWidth - pad * 2 - slack - dockReserve;
     const maxH = clientHeight - pad * 2 - slack;
 

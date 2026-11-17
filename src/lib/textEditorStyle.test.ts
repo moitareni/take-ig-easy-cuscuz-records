@@ -55,6 +55,16 @@ describe('editorTextStyle', () => {
     expect(s.textShadow).toContain(`${BRAND_EFFECT.shadowDistance * 0.5}px`);
   });
 
+  it('uses custom brandEffectColor for stroke when provided', () => {
+    const s = editorTextStyle(
+      { ...baseEl, brandEffectColor: 'barro' },
+      { scaleRatio: 0.5, padX: 0, padY: 0 }
+    );
+    expect(s.WebkitTextStroke).toBe(
+      `${BRAND_EFFECT.strokeOutside * 0.5}px ${COLORS.barro}`
+    );
+  });
+
   it('omits stroke and shadow without brand effect and pads for borders', () => {
     const s = editorTextStyle(
       { ...baseEl, brandEffect: false },

@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { createSingle, goHome, openCarousel, openSingle, waitForHome } from './helpers';
+import { chooseMode, createSingle, goHome, openCarousel, openSingle, pickCarousel, waitForHome } from './helpers';
 
 interface TextSnapshot {
   id: string;
@@ -263,16 +263,19 @@ test.describe('Regressões da leva P0', () => {
     // Abrir a prévia não liga o papel
     await expect(paperCb).not.toBeChecked();
 
-    // Ativar todas liga os três de uma vez e vira "Desativar todas"
+    // No post único não existe "Aplicar em todos os slides"
+    await expect(page.getByRole('button', { name: /Aplicar em todos os slides/ })).toHaveCount(0);
+
+    // Ativar todas as texturas liga os três de uma vez e vira "Desativar todas as texturas"
     await page.waitForTimeout(450);
-    await page.getByRole('button', { name: 'Ativar todas' }).click();
+    await page.getByRole('button', { name: 'Ativar todas as texturas' }).click();
     await expect(paperCb).toBeChecked();
     await expect(borderCb).toBeChecked();
     await expect(grainCb).toBeChecked();
-    const disableAllBtn = page.getByRole('button', { name: 'Desativar todas' });
+    const disableAllBtn = page.getByRole('button', { name: 'Desativar todas as texturas' });
     await expect(disableAllBtn).toBeVisible();
 
-    // Desativar todas desliga os três; um único Ctrl+Z religa os três
+    // Desativar todas as texturas desliga os três; um único Ctrl+Z religa os três
     await page.waitForTimeout(450);
     await disableAllBtn.click();
     await expect(paperCb).not.toBeChecked();
@@ -283,13 +286,125 @@ test.describe('Regressões da leva P0', () => {
     await expect(borderCb).toBeChecked();
     await expect(grainCb).toBeChecked();
 
-    // "Restaurar padrão" saiu da aba: "Desativar todas" é o caminho único para
+    // "Restaurar padrão" saiu da aba: "Desativar todas as texturas" é o caminho único para
     // desligar os três de uma vez e continua funcionando depois de um undo.
     await expect(page.getByRole('button', { name: /Restaurar padrão/ })).toHaveCount(0);
-    await page.getByRole('button', { name: 'Desativar todas' }).click();
+    await page.getByRole('button', { name: 'Desativar todas as texturas' }).click();
     await expect(paperCb).not.toBeChecked();
     await expect(borderCb).not.toBeChecked();
     await expect(grainCb).not.toBeChecked();
+  });
+
+  test('Textura no carrossel: Aplicar em todos os slides ao lado de Ativar/Desativar todas as texturas', async ({
+    page,
+  }) => {
+    await openCarousel(page);
+    await page.locator('button[title*="Pronto 1"]').first().click();
+    await page.getByRole('button', { name: 'Novo slide vazio' }).first().click();
+    await page.getByRole('button', { name: /^Slide 1/ }).click();
+    await page.getByRole('button', { name: /6\. Textura/ }).click();
+
+    const activateAllBtn = page.getByRole('button', { name: 'Ativar todas as texturas' });
+    const applyAllBtn = page.getByRole('button', { name: /Aplicar em todos os slides/ });
+    await expect(activateAllBtn).toBeVisible();
+    await expect(applyAllBtn).toBeVisible();
+    await expect(applyAllBtn).toHaveAttribute('aria-pressed', 'true');
+
+    // Botões lado a lado e sem overflow horizontal no painel
+    const aBox = await activateAllBtn.boundingBox();
+    const bBox = await applyAllBtn.boundingBox();
+    expect(aBox && bBox).toBeTruthy();
+    expect(Math.abs(bBox!.y - aBox!.y)).toBeLessThan(3);
+    expect(bBox!.x).toBeGreaterThan(aBox!.x);
+
+    const hasHorizOverflow = await page
+      .locator('[class*="stepContent"] > div')
+      .first()
+      .evaluate((el) => el.scrollWidth > el.clientWidth + 1);
+    expect(hasHorizOverflow).toBe(false);
+
+    // Com "Aplicar em todos os slides" ativo por padrão, ativar texturas propaga para todos os slides
+    await page.waitForTimeout(450);
+    await activateAllBtn.click();
+    await expect(page.getByRole('button', { name: 'Desativar todas as texturas' })).toBeVisible();
+
+    const readSlideFinishes = () =>
+      page.evaluate(() => {
+        const c = (
+          window as unknown as {
+            __useCarousel: {
+              getState: () => {
+                applyFinishToAll: boolean;
+                slides: Array<{
+                  finish: {
+                    paper: { enabled: boolean };
+                    borderTexture: { enabled: boolean };
+                    grain: { enabled: boolean };
+                  };
+                }>;
+              };
+            };
+          }
+        ).__useCarousel.getState();
+        return {
+          applyFinishToAll: c.applyFinishToAll,
+          slides: c.slides.map((s) => ({
+            paper: s.finish.paper.enabled,
+            border: s.finish.borderTexture.enabled,
+            grain: s.finish.grain.enabled,
+          })),
+        };
+      });
+
+    expect(await readSlideFinishes()).toEqual({
+      applyFinishToAll: true,
+      slides: [
+        { paper: true, border: true, grain: true },
+        { paper: true, border: true, grain: true },
+      ],
+    });
+
+    // Desativa "Aplicar em todos os slides":
+    // ambos os slides mantêm as texturas atuais; a próxima edição passa a ser individual.
+    await applyAllBtn.click();
+    await expect(applyAllBtn).toHaveAttribute('aria-pressed', 'false');
+
+    expect(await readSlideFinishes()).toEqual({
+      applyFinishToAll: false,
+      slides: [
+        { paper: true, border: true, grain: true },
+        { paper: true, border: true, grain: true },
+      ],
+    });
+
+    // Troca para o slide 2 e desativa as texturas só do slide 2: o slide 1 continua com as texturas
+    await page.getByRole('button', { name: /^Slide 2/ }).click();
+    await page.locator('button[title*="Pronto 1"]').first().click();
+    await page.getByRole('button', { name: /6\. Textura/ }).click();
+    await expect(page.getByRole('checkbox', { name: 'Papel amassado' })).toBeChecked();
+    await page.waitForTimeout(450);
+    await page.getByRole('button', { name: 'Desativar todas as texturas' }).click();
+    await expect(page.getByRole('checkbox', { name: 'Papel amassado' })).not.toBeChecked();
+
+    expect(await readSlideFinishes()).toEqual({
+      applyFinishToAll: false,
+      slides: [
+        { paper: true, border: true, grain: true },
+        { paper: false, border: false, grain: false },
+      ],
+    });
+
+    // Reativa "Aplicar em todos os slides": propaga o finish do slide ativo (slide 2)
+    // para todos os slides
+    await applyAllBtn.click();
+    await expect(applyAllBtn).toHaveAttribute('aria-pressed', 'true');
+    expect(await readSlideFinishes()).toEqual({
+      applyFinishToAll: true,
+      slides: [
+        { paper: false, border: false, grain: false },
+        { paper: false, border: false, grain: false },
+      ],
+    });
   });
   test('Presets de logo seguem margem das guias (ou 0 quando desativada) e novo layout de Header/Dock', async ({
     page,
@@ -308,37 +423,67 @@ test.describe('Regressões da leva P0', () => {
     await page.getByRole('button', { name: /5\. Logo/ }).click();
     await page.getByRole('button', { name: 'Adicionar Logo com Papel' }).click();
 
-    // Margem 56 padrão no Canto Sup. Esq.
-    await page.getByRole('button', { name: 'Canto Sup. Esq.' }).click();
+    // No dock desktop, a base de Cópia e Exclusão alinha com a base de Alinhamento
+    const isDesktop = await page.evaluate(() => window.innerWidth > 640);
+    if (isDesktop) {
+      const alignBottomBtn = dock.getByRole('button', { name: 'Alinhar à base da página' });
+      const trashBtn = dock.getByRole('button', { name: 'Excluir (Delete)' });
+      const bAlign = await alignBottomBtn.boundingBox();
+      const bTrash = await trashBtn.boundingBox();
+      expect(bAlign && bTrash).toBeTruthy();
+      const bottomAlign = bAlign!.y + bAlign!.height;
+      const bottomTrash = bTrash!.y + bTrash!.height;
+      expect(Math.abs(bottomAlign - bottomTrash)).toBeLessThanOrEqual(2);
+    }
+
+    // Posições Rápidas foram removidas e P / M / G ocupam toda a largura distribuídos igualmente
+    await expect(page.getByText('Posições Rápidas')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Canto Sup. Esq.' })).toHaveCount(0);
+    const sizeP = page.getByRole('button', { name: 'P', exact: true });
+    const sizeM = page.getByRole('button', { name: 'M', exact: true });
+    const sizeG = page.getByRole('button', { name: 'G', exact: true });
+    await expect(sizeP).toBeVisible();
+    await expect(sizeM).toBeVisible();
+    await expect(sizeG).toBeVisible();
+    const boxP = await sizeP.boundingBox();
+    const boxM = await sizeM.boundingBox();
+    const boxG = await sizeG.boundingBox();
+    expect(boxP && boxM && boxG).toBeTruthy();
+    expect(Math.abs(boxP!.width - boxM!.width)).toBeLessThan(2);
+    expect(Math.abs(boxM!.width - boxG!.width)).toBeLessThan(2);
+    expect(boxP!.width).toBeGreaterThan(70);
+
+    // Margem 56 padrão via placeLogo('tl')
     const pos56 = await page.evaluate(() => {
       const w = window as unknown as {
-        __useEditor?: { getState: () => { doc: { elements: Array<{ kind: string; x: number; y: number }> } } };
+        __useEditor?: {
+          getState: () => {
+            placeLogo: (pos: 'tl' | 'tr' | 'bl' | 'br' | 'bc' | 'center') => void;
+            doc: { elements: Array<{ kind: string; x: number; y: number }> };
+          };
+        };
       };
+      w.__useEditor?.getState().placeLogo('tl');
       const logo = w.__useEditor?.getState().doc.elements.find((e) => e.kind === 'logo');
       return logo ? { x: logo.x, y: logo.y } : null;
     });
     expect(pos56).not.toBeNull();
 
-    // Muda a margem para 100px na GuideToolbar e clica em Canto Sup. Esq.
-    await dock.getByRole('button', { name: '100', exact: true }).click();
-    await page.getByRole('button', { name: 'Canto Sup. Esq.' }).click();
-    const pos100 = await page.evaluate(() => {
-      const w = window as unknown as {
-        __useEditor?: { getState: () => { doc: { elements: Array<{ kind: string; x: number; y: number }> } } };
-      };
-      const logo = w.__useEditor?.getState().doc.elements.find((e) => e.kind === 'logo');
-      return logo ? { x: logo.x, y: logo.y } : null;
-    });
-    expect(pos100!.x - pos56!.x).toBeCloseTo(44, 1);
-    expect(pos100!.y - pos56!.y).toBeCloseTo(44, 1);
+    // A grade de presets "Margem (px)" saiu do card de guias (Leva 5)
+    await expect(dock.getByText('Margem (px)')).toHaveCount(0);
 
-    // Desliga as guias de layout e clica em Canto Sup. Esq. -> cola no canto (margem 0)
+    // Desliga as guias de layout e reposiciona em 'tl' -> cola no canto (margem 0)
     await dock.getByRole('button', { name: /Esconder guias de layout/ }).click();
-    await page.getByRole('button', { name: 'Canto Sup. Esq.' }).click();
     const pos0 = await page.evaluate(() => {
       const w = window as unknown as {
-        __useEditor?: { getState: () => { doc: { elements: Array<{ kind: string; x: number; y: number }> } } };
+        __useEditor?: {
+          getState: () => {
+            placeLogo: (pos: 'tl' | 'tr' | 'bl' | 'br' | 'bc' | 'center') => void;
+            doc: { elements: Array<{ kind: string; x: number; y: number }> };
+          };
+        };
       };
+      w.__useEditor?.getState().placeLogo('tl');
       const logo = w.__useEditor?.getState().doc.elements.find((e) => e.kind === 'logo');
       return logo ? { x: logo.x, y: logo.y } : null;
     });
@@ -442,7 +587,7 @@ test.describe('Regressões da leva P0', () => {
     await expect(row).toHaveAttribute('aria-pressed', 'true');
   });
 
-  test('Leva 4: os três botões de criação de texto ficam lado a lado', async ({ page }) => {
+  test('Passo 4: botões de criação (+ Título / + Texto) e toggles (Tudo maiúsculo / Texto com borda) ficam lado a lado', async ({ page }) => {
     await openSingle(page);
     await page.locator('button[title*="Pronto 1"]').first().click();
     await page.getByRole('button', { name: /Próximo/ }).click();
@@ -454,19 +599,35 @@ test.describe('Regressões da leva P0', () => {
 
     const title = page.getByRole('button', { name: '+ Título', exact: true });
     const body = page.getByRole('button', { name: '+ Texto', exact: true });
-    const highlight = page.getByRole('button', { name: '+ Texto com borda', exact: true });
     await expect(title).toBeVisible();
     await expect(body).toBeVisible();
-    await expect(highlight).toBeVisible();
+    await expect(page.getByRole('button', { name: '+ Texto com borda', exact: true })).toHaveCount(0);
 
     const a = await title.boundingBox();
     const b = await body.boundingBox();
-    const c = await highlight.boundingBox();
-    expect(a && b && c).toBeTruthy();
+    expect(a && b).toBeTruthy();
     expect(Math.abs(b!.y - a!.y)).toBeLessThan(2);
-    expect(Math.abs(c!.y - a!.y)).toBeLessThan(2);
     expect(b!.x).toBeGreaterThan(a!.x);
-    expect(c!.x).toBeGreaterThan(b!.x);
+
+    await title.click();
+    const uppercaseBtn = page.getByRole('button', { name: /Tudo maiúsculo/i });
+    const borderBtn = page.getByRole('button', { name: /Texto com borda/i });
+    await expect(uppercaseBtn).toBeVisible();
+    await expect(borderBtn).toBeVisible();
+
+    const u = await uppercaseBtn.boundingBox();
+    const br = await borderBtn.boundingBox();
+    expect(u && br).toBeTruthy();
+    expect(Math.abs(br!.y - u!.y)).toBeLessThan(2);
+    expect(br!.x).toBeGreaterThan(u!.x);
+
+    // Opções de cor da borda só aparecem quando "Texto com borda" está ativo
+    await expect(page.getByText('Cor da borda:')).toHaveCount(0);
+    await borderBtn.click();
+    await expect(page.getByText('Cor da borda:')).toBeVisible();
+    for (const colorName of ['Preto', 'Barro', 'Amarelo', 'Verde Ceará', 'Creme']) {
+      await expect(page.getByRole('button', { name: `Cor da borda: ${colorName}` })).toBeVisible();
+    }
   });
 
   test('Leva 4: "Cor do texto" e caixinhas de destaque com a mesma altura das cores', async ({ page }) => {
@@ -627,7 +788,22 @@ test.describe('Regressões da leva P0', () => {
     await page.locator('textarea[placeholder="Digite o texto aqui..."]').fill('SONORIDADE');
     await page.getByRole('button', { name: /5\. Logo/ }).click();
     await page.getByRole('button', { name: 'Adicionar Logo com Papel' }).click();
-    await page.getByRole('button', { name: 'Canto Inf. Esq.' }).click();
+    await page.getByRole('button', { name: 'Alinhar à esquerda da página' }).click();
+
+    // Verifica também que o card "+" de adicionar slide está alinhado, com borda tracejada,
+    // é o único botão "Novo slide vazio" e tem o mesmo tamanho das miniaturas
+    const firstSlideThumb = page.locator('[data-slide-index="0"]').first();
+    const addSlideButtons = page.getByRole('button', { name: 'Novo slide vazio' });
+    await expect(addSlideButtons).toHaveCount(1);
+    const addSlideThumb = addSlideButtons.first();
+    const addBorderStyle = await addSlideThumb.evaluate((el) => getComputedStyle(el).borderTopStyle);
+    expect(addBorderStyle).toBe('dashed');
+    const firstBox = await firstSlideThumb.boundingBox();
+    const addBox = await addSlideThumb.boundingBox();
+    expect(firstBox && addBox).toBeTruthy();
+    expect(Math.abs(addBox!.y - firstBox!.y)).toBeLessThanOrEqual(3);
+    expect(Math.abs(addBox!.width - firstBox!.width)).toBeLessThan(2);
+    expect(Math.abs(addBox!.height - firstBox!.height)).toBeLessThan(2);
 
     // Duas páginas vazias (3 no total, como no relato).
     await page.getByRole('button', { name: 'Novo slide vazio' }).first().click();
@@ -837,5 +1013,250 @@ test.describe('Regressões da leva P0', () => {
     expect(afterState.motionActive).toBeNull();
     expect(afterState.ids).toEqual([beforeIds[2], beforeIds[0], beforeIds[1]]);
     expect(afterState.opacities).toEqual([1, 1, 1]);
+  });
+
+  test('botão Renomear no header abre edição por teclado e restaura foco ao cancelar', async ({ page }) => {
+    await openSingle(page);
+    const renameBtn = page.getByRole('button', { name: 'Renomear' });
+    await renameBtn.focus();
+    await renameBtn.press('Enter');
+
+    const input = page.getByRole('textbox', { name: 'Nome do projeto' });
+    await expect(input).toBeFocused();
+    await input.press('Escape');
+
+    await expect(renameBtn).toBeFocused();
+  });
+
+  test('botões acessíveis de mover slide reordenam o carrossel sem arrastar', async ({ page }) => {
+    await openCarousel(page);
+    await page.getByRole('button', { name: 'Novo slide vazio' }).first().click();
+    const thumbs = page.locator('[data-slide-index]');
+    await expect(thumbs).toHaveCount(2);
+
+    const beforeIds = await thumbs.evaluateAll((els) =>
+      els.map((el) => el.getAttribute('data-slide-id')),
+    );
+
+    await page.getByRole('button', { name: 'Mover slide 2 para a esquerda' }).click();
+
+    await expect(async () => {
+      const afterIds = await thumbs.evaluateAll((els) =>
+        els.map((el) => el.getAttribute('data-slide-id')),
+      );
+      expect(afterIds).toEqual([beforeIds[1], beforeIds[0]]);
+    }).toPass({ timeout: 3000 });
+  });
+
+  test('diálogos modais focam botão seguro e fecham com Escape', async ({ page }) => {
+    await page.goto('/');
+    await waitForHome(page);
+    await pickCarousel(page);
+
+    const formatDialog = page.getByRole('dialog', { name: /Escolha o formato do carrossel/ });
+    await expect(formatDialog).toBeVisible();
+    await expect(formatDialog.getByRole('button', { name: 'Vertical (3:4)' })).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(formatDialog).toHaveCount(0);
+
+    await createSingle(page);
+    await expect(page.getByRole('heading', { name: /1\. Escolha o fundo/ })).toBeVisible();
+    await chooseMode(page, 'carousel');
+
+    const confirmDialog = page.getByRole('dialog').filter({ hasText: 'Trocar pra Carrossel?' });
+    await expect(confirmDialog).toBeVisible();
+    await expect(confirmDialog.getByRole('button', { name: 'Ficar aqui' })).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(confirmDialog).toHaveCount(0);
+  });
+
+  test('Bug #01: "Novo slide vazio" no último slide de rascunho duplicado cria Slide 8 limpo, foca na tira e preserva Slide 7', async ({
+    page,
+  }) => {
+    await openCarousel(page);
+
+    const addSlideBtn = page.getByRole('button', { name: 'Novo slide vazio' });
+    for (let i = 0; i < 6; i++) {
+      const current = await page.evaluate(() => {
+        const w = window as unknown as {
+          __useCarousel?: { getState: () => { slides: unknown[] } };
+        };
+        return w.__useCarousel?.getState().slides.length ?? 0;
+      });
+      if (current >= 7) break;
+      await addSlideBtn.click();
+    }
+
+    await page.getByRole('button', { name: /^Slide 7\b/ }).click();
+    await expect(page.getByTestId('slide-badge')).toHaveText('Slide 7 de 7');
+
+    // Popula o Slide 7 com fundo, enfeite, título e textura padrão
+    await page.locator('button[title*="Pronto 1"]').first().click();
+
+    await page.getByRole('button', { name: /2\. Enfeites/ }).click();
+    await page.locator('button[title*="Arabesco floral"]').first().click();
+
+    await page.getByRole('button', { name: /4\. Texto/ }).click();
+    await page.locator('button:has-text("+ Título")').click();
+    await page.locator('textarea[placeholder="Digite o texto aqui..."]').fill('SLIDE SETE');
+
+    await page.getByRole('button', { name: /6\. Textura/ }).click();
+    await page.getByRole('checkbox', { name: 'Papel amassado' }).check();
+    await expect(page.getByRole('checkbox', { name: 'Papel amassado' })).toBeChecked();
+
+    // Volta pra home, duplica o rascunho e abre a cópia
+    await goHome(page);
+    await page.getByRole('button', { name: 'Duplicar rascunho' }).first().click();
+    const openCopyBtn = page.getByRole('button', { name: /Abrir .*cópia/i }).first();
+    await expect(openCopyBtn).toBeVisible();
+    await openCopyBtn.click();
+    await expect(page.getByRole('heading', { name: /1\. Escolha o fundo/ })).toBeVisible();
+
+    // Navega até o Slide 7 e cria um novo slide vazio
+    await page.getByRole('button', { name: /^Slide 7\b/ }).click();
+    await expect(page.getByTestId('slide-badge')).toHaveText('Slide 7 de 7');
+
+    await addSlideBtn.click();
+
+    await expect(page.getByTestId('slide-badge')).toHaveText('Slide 8 de 8');
+    const slide8Btn = page.getByRole('button', { name: /Slide 8 \(ativo\)/ });
+    await expect(slide8Btn).toBeVisible();
+    await expect(slide8Btn).toBeFocused();
+
+    const visibleInTray = await slide8Btn.evaluate((btn) => {
+      let scroller: HTMLElement | null = btn.parentElement;
+      while (scroller) {
+        const ox = getComputedStyle(scroller).overflowX;
+        if (ox === 'auto' || ox === 'scroll') break;
+        scroller = scroller.parentElement;
+      }
+      const btnRect = btn.getBoundingClientRect();
+      if (!scroller) {
+        return btnRect.left >= 0 && btnRect.right <= window.innerWidth;
+      }
+      const listRect = scroller.getBoundingClientRect();
+      return btnRect.left >= listRect.left - 1 && btnRect.right <= listRect.right + 1;
+    });
+    expect(visibleInTray).toBe(true);
+
+    const snapshot = await page.evaluate(() => {
+      const w = window as unknown as {
+        __useCarousel?: {
+          getState: () => {
+            activeSlideIndex: number;
+            slides: Array<{
+              doc: { backgroundId: string | null; elements: unknown[] };
+              finish: { paper: { enabled: boolean } };
+            }>;
+          };
+        };
+        __useEditor?: {
+          getState: () => {
+            doc: { backgroundId: string | null; elements: unknown[] };
+            finish: { paper: { enabled: boolean } };
+          };
+        };
+      };
+      const carousel = w.__useCarousel?.getState();
+      const editor = w.__useEditor?.getState();
+      if (!carousel || !editor) return null;
+      return {
+        activeSlideIndex: carousel.activeSlideIndex,
+        slideCount: carousel.slides.length,
+        slide7: {
+          backgroundId: carousel.slides[6]?.doc.backgroundId ?? null,
+          elements: carousel.slides[6]?.doc.elements.length ?? -1,
+        },
+        slide8: {
+          backgroundId: carousel.slides[7]?.doc.backgroundId ?? null,
+          elements: carousel.slides[7]?.doc.elements.length ?? -1,
+          paperEnabled: carousel.slides[7]?.finish.paper.enabled ?? false,
+        },
+        editor: {
+          backgroundId: editor.doc.backgroundId,
+          elements: editor.doc.elements.length,
+          paperEnabled: editor.finish.paper.enabled,
+        },
+      };
+    });
+
+    expect(snapshot).toEqual({
+      activeSlideIndex: 7,
+      slideCount: 8,
+      slide7: {
+        backgroundId: expect.any(String),
+        elements: 2,
+      },
+      slide8: {
+        backgroundId: null,
+        elements: 0,
+        paperEnabled: true,
+      },
+      editor: {
+        backgroundId: null,
+        elements: 0,
+        paperEnabled: true,
+      },
+    });
+  });
+
+  test('Melhoria #01: área de trabalho oculta scrollbars visuais mantendo scrollbarGutter stable e rolagem por wheel', async ({
+    page,
+  }) => {
+    await openSingle(page);
+
+    const stepContainer = page.locator('[class*="stepContent"] > div').first();
+    const canvasContainer = page.locator('[class*="canvasArea"] > [class*="container"]').first();
+    const dock = page.locator('[class*="dock"]').first();
+
+    await expect(stepContainer).toBeVisible();
+    await expect(canvasContainer).toBeVisible();
+    await expect(dock).toBeVisible();
+
+    const styles = await page.evaluate(() => {
+      const stepEl = document.querySelector('[class*="stepContent"] > div') as HTMLElement | null;
+      const canvasEl = document.querySelector(
+        '[class*="canvasArea"] > [class*="container"]',
+      ) as HTMLElement | null;
+      const dockEl = document.querySelector('[class*="dock"]') as HTMLElement | null;
+      if (!stepEl || !canvasEl || !dockEl) return null;
+      const stepCs = getComputedStyle(stepEl);
+      const canvasCs = getComputedStyle(canvasEl);
+      const dockCs = getComputedStyle(dockEl);
+      return {
+        stepScrollbarWidth: stepCs.scrollbarWidth,
+        stepScrollbarGutter: stepCs.scrollbarGutter,
+        canvasScrollbarWidth: canvasCs.scrollbarWidth,
+        dockScrollbarWidth: dockCs.scrollbarWidth,
+      };
+    });
+
+    expect(styles).not.toBeNull();
+    expect(styles!.stepScrollbarWidth).toBe('none');
+    expect(styles!.stepScrollbarGutter).toContain('stable');
+    expect(styles!.canvasScrollbarWidth).toBe('none');
+    expect(styles!.dockScrollbarWidth).toBe('none');
+
+    // Garante overflow vertical na área da folha e valida que o scroll por wheel segue funcionando
+    await page.setViewportSize({ width: 1280, height: 420 });
+    const zoomInBtn = page.getByRole('button', { name: 'Ampliar zoom (Ctrl+=)' });
+    await zoomInBtn.click();
+    await zoomInBtn.click();
+
+    await expect
+      .poll(() => canvasContainer.evaluate((el) => el.scrollHeight > el.clientHeight))
+      .toBe(true);
+
+    await canvasContainer.evaluate((el) => {
+      el.scrollTop = 0;
+    });
+    const box = await canvasContainer.boundingBox();
+    expect(box).not.toBeNull();
+    await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
+    await page.mouse.wheel(0, 240);
+
+    await expect
+      .poll(() => canvasContainer.evaluate((el) => el.scrollTop))
+      .toBeGreaterThan(0);
   });
 });

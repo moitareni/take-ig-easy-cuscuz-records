@@ -1,7 +1,7 @@
 {
   "name": "cuscuz-insta-kit",
   "private": true,
-  "version": "1.0.0",
+  "version": "2.0.0",
   "type": "module",
   "description": "Cuscuz Records Insta Kit — gerador de posts 3:4 para Instagram com a identidade visual da marca.",
   "scripts": {

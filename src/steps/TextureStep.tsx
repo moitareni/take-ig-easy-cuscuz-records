@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ChevronDown, Sparkles, X } from 'lucide-react';
+import { ChevronDown, Images, Sparkles, X } from 'lucide-react';
 import {
   BORDER_TEXTURE_OPACITY_MAX,
   BORDER_TEXTURE_OPACITY_MIN,
@@ -18,6 +18,7 @@ import { PreviewImage } from '../components/ui/PreviewImage';
 import { Segmented } from '../components/ui/Segmented';
 import { Slider } from '../components/ui/Slider';
 import { announceCanvasActivity } from '../lib/useImage';
+import { useCarousel } from '../store/carouselStore';
 import { useEditor } from '../store/editorStore';
 import styles from './StepPanel.module.css';
 import textureStyles from './TextureStep.module.css';
@@ -93,11 +94,42 @@ export const TextureStep: React.FC = () => {
   const setGrain = useEditor((s) => s.setGrain);
   const enableAllFinishes = useEditor((s) => s.enableAllFinishes);
   const disableAllFinishes = useEditor((s) => s.disableAllFinishes);
+  const mode = useCarousel((s) => s.mode);
+  const applyFinishToAll = useCarousel((s) => s.applyFinishToAll);
+  const setApplyFinishToAll = useCarousel((s) => s.setApplyFinishToAll);
   const paper = getPaperTexture();
   const border = getBorderTexture();
 
   const allEnabled =
     finish.paper.enabled && finish.borderTexture.enabled && finish.grain.enabled;
+
+  const isCarousel = mode === 'carousel';
+  const toggleAllButton = allEnabled ? (
+    <Button
+      variant="secondary"
+      size="sm"
+      fullWidth={!isCarousel}
+      className={isCarousel ? styles.toggleBtn : undefined}
+      icon={<X size={16} strokeWidth={2.5} />}
+      onClick={disableAllFinishes}
+    >
+      Desativar todas as texturas
+    </Button>
+  ) : (
+    <Button
+      variant="secondary"
+      size="sm"
+      fullWidth={!isCarousel}
+      className={isCarousel ? styles.toggleBtn : undefined}
+      icon={<Sparkles size={16} strokeWidth={2.5} />}
+      onClick={() => {
+        announceCanvasActivity('texture', 'Aplicando textura... ✨', paper?.src);
+        enableAllFinishes();
+      }}
+    >
+      Ativar todas as texturas
+    </Button>
+  );
 
   return (
     <div className={styles.container}>
@@ -110,29 +142,40 @@ export const TextureStep: React.FC = () => {
         />
       </div>
 
-      {allEnabled ? (
-        <Button
-          variant="secondary"
-          size="sm"
-          fullWidth
-          icon={<X size={16} strokeWidth={2.5} />}
-          onClick={disableAllFinishes}
-        >
-          Desativar todas
-        </Button>
+      {isCarousel ? (
+        <div className={styles.togglePair}>
+          {toggleAllButton}
+          <Button
+            variant="primary"
+            size="sm"
+            className={styles.toggleBtn}
+            icon={<Images size={16} strokeWidth={2.5} />}
+            aria-pressed={applyFinishToAll}
+            onClick={() => {
+              const next = !applyFinishToAll;
+              if (next && (finish.paper.enabled || finish.borderTexture.enabled)) {
+                announceCanvasActivity(
+                  'texture',
+                  'Aplicando textura... ✨',
+                  finish.paper.enabled ? paper?.src : border?.src,
+                );
+              }
+              setApplyFinishToAll(next);
+            }}
+          >
+            <span className={styles.toggleLabel}>
+              <span>Aplicar em todos os slides</span>
+              <span
+                className={`${styles.effectDot} ${applyFinishToAll ? styles.effectDotActive : ''}`}
+                aria-hidden="true"
+              >
+                ✓
+              </span>
+            </span>
+          </Button>
+        </div>
       ) : (
-        <Button
-          variant="secondary"
-          size="sm"
-          fullWidth
-          icon={<Sparkles size={16} strokeWidth={2.5} />}
-          onClick={() => {
-            announceCanvasActivity('texture', 'Aplicando textura... ✨', paper?.src);
-            enableAllFinishes();
-          }}
-        >
-          Ativar todas
-        </Button>
+        toggleAllButton
       )}
 
       {/* Papel Amassado em overlay */}

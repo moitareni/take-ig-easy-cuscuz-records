@@ -8,9 +8,9 @@ import type { DecorationEl } from '../types';
 export interface DecorationNodeProps {
   element: DecorationEl;
   isSelected: boolean;
-  /** Recebe o evento do Konva: Ctrl/Cmd/Shift soma/remove da seleção. */
-  onSelect: (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => void;
-  onChange: (patch: Partial<DecorationEl>) => void;
+  /** Recebe o id e o evento do Konva: Ctrl/Cmd/Shift soma/remove da seleção. */
+  onSelect: (id: string, e: Konva.KonvaEventObject<Event>) => void;
+  onChange: (id: string, patch: Partial<DecorationEl>) => void;
   onDragMoveSnap: (node: Konva.Node) => void;
   onDragEndSnap: () => void;
 }
@@ -26,7 +26,7 @@ export interface DecorationNodeProps {
  * rotação 180° + scaleY negativo. O resultado era a âncora de rotação pulando
  * para baixo e os botões de espelhar trocando de estado sozinhos.
  */
-export const DecorationNode: React.FC<DecorationNodeProps> = ({
+const DecorationNodeImpl: React.FC<DecorationNodeProps> = ({
   element,
   onSelect,
   onChange,
@@ -53,14 +53,14 @@ export const DecorationNode: React.FC<DecorationNodeProps> = ({
       scaleX={element.scale}
       scaleY={element.scale}
       draggable
-      onClick={onSelect}
-      onTap={onSelect}
+      onClick={(e) => onSelect(element.id, e)}
+      onTap={(e) => onSelect(element.id, e)}
       onDragMove={(e) => {
         onDragMoveSnap(e.target);
       }}
       onDragEnd={(e) => {
         onDragEndSnap();
-        onChange({
+        onChange(element.id, {
           x: e.target.x(),
           y: e.target.y(),
         });
@@ -73,7 +73,7 @@ export const DecorationNode: React.FC<DecorationNodeProps> = ({
         // então NÃO derivamos flipX/flipY daqui — escrever os sinais da escala
         // apagaria o flip do usuário a cada resize.
         const sx = node.scaleX();
-        onChange({
+        onChange(element.id, {
           x: node.x(),
           y: node.y(),
           rotation: Math.round(node.rotation()),
@@ -94,3 +94,5 @@ export const DecorationNode: React.FC<DecorationNodeProps> = ({
     </KonvaGroup>
   );
 };
+
+export const DecorationNode = React.memo(DecorationNodeImpl);

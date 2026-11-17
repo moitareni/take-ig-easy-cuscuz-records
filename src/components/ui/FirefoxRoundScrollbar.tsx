@@ -51,6 +51,7 @@ export const FirefoxRoundScrollbar: React.FC = () => {
         const ch = el.clientHeight;
         if (sh <= ch + 2 || ch <= 0) return;
         const style = getComputedStyle(el);
+        if (style.scrollbarWidth === 'none') return;
         if (style.overflowY !== 'auto' && style.overflowY !== 'scroll') return;
         const rect = el.getBoundingClientRect();
         if (rect.width <= 0 || rect.height <= 0) return;

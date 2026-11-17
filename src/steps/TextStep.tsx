@@ -3,12 +3,13 @@ import {
   AlignCenter,
   AlignLeft,
   AlignRight,
+  CaseUpper,
   Heading,
   Sparkles,
   Trash2,
   Type,
 } from 'lucide-react';
-import { FONT_SIZE_MIN, HEADING_FONT_SIZE_MAX } from '../brand/brand';
+import { FONT_SIZE_MIN, HEADING_FONT_SIZE_MAX, TEXT_BORDER_COLORS } from '../brand/brand';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { ColorSwatches } from '../components/ui/ColorSwatches';
@@ -53,7 +54,7 @@ export const TextStep: React.FC = () => {
       {/* Botões de Adicionar Novos Textos */}
       <div className={styles.section}>
         <h3 className={styles.sectionTitle}>Adicionar à folha</h3>
-        <div className={styles.buttonGrid3}>
+        <div className={styles.buttonGrid}>
           <Button
             variant="secondary"
             size="sm"
@@ -72,16 +73,6 @@ export const TextStep: React.FC = () => {
             onClick={() => addText('body')}
           >
             + Texto
-          </Button>
-
-          <Button
-            variant="secondary"
-            size="sm"
-            className={styles.addTextButton}
-            icon={<Sparkles size={18} strokeWidth={2.5} />}
-            onClick={() => addText('highlight')}
-          >
-            + Texto com borda
           </Button>
         </div>
       </div>
@@ -112,6 +103,62 @@ export const TextStep: React.FC = () => {
               />
             </div>
 
+            {/* CAIXA ALTA e TEXTO COM BORDA: lado a lado logo abaixo do texto */}
+            <div className={styles.togglePair}>
+              <Button
+                variant="secondary"
+                size="sm"
+                className={styles.toggleBtn}
+                icon={<CaseUpper size={16} strokeWidth={2.5} />}
+                aria-pressed={selectedText.uppercase}
+                onClick={() => updateElement(selectedText.id, { uppercase: !selectedText.uppercase })}
+              >
+                <span className={styles.toggleLabel}>
+                  <span>Tudo maiúsculo</span>
+                  <span
+                    className={`${styles.caseBadge} ${selectedText.uppercase ? styles.caseBadgeActive : ''}`}
+                    aria-hidden="true"
+                  >
+                    {selectedText.uppercase ? 'AA' : 'aa'}
+                  </span>
+                </span>
+              </Button>
+
+              <Button
+                variant="primary"
+                size="sm"
+                className={styles.toggleBtn}
+                icon={<Sparkles size={16} strokeWidth={2.5} />}
+                aria-pressed={selectedText.brandEffect}
+                onClick={() =>
+                  updateElement(selectedText.id, { brandEffect: !selectedText.brandEffect })
+                }
+              >
+                <span className={styles.toggleLabel}>
+                  <span>Texto com borda</span>
+                  <span
+                    className={`${styles.effectDot} ${selectedText.brandEffect ? styles.effectDotActive : ''}`}
+                    aria-hidden="true"
+                  >
+                    ✓
+                  </span>
+                </span>
+              </Button>
+            </div>
+
+            {selectedText.brandEffect && (
+              <ColorSwatches
+                label="Cor da borda:"
+                colors={TEXT_BORDER_COLORS}
+                columns={5}
+                ariaLabelPrefix="Cor da borda"
+                value={selectedText.brandEffectColor ?? 'creme'}
+                onChange={(brandEffectColor) =>
+                  updateElement(selectedText.id, { brandEffectColor })
+                }
+              />
+            )}
+
             {/* Slider de Tamanho com marcador de limite e regra Texto <= Título */}
             <Slider
               label="Tamanho da Fonte"
@@ -141,18 +188,6 @@ export const TextStep: React.FC = () => {
                 value={selectedText.align}
                 onChange={(align) => updateElement(selectedText.id, { align })}
               />
-            </div>
-
-            {/* CAIXA ALTA */}
-            <div className={styles.row}>
-              <Button
-                variant={selectedText.uppercase ? 'primary' : 'secondary'}
-                size="sm"
-                fullWidth
-                onClick={() => updateElement(selectedText.id, { uppercase: !selectedText.uppercase })}
-              >
-                {selectedText.uppercase ? 'TUDO MAIÚSCULO (Ativo)' : 'Tudo maiúsculo'}
-              </Button>
             </div>
 
             {/* Cor do texto (2 colunas) + Caixa de destaque (empilhada) */}

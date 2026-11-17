@@ -8,9 +8,9 @@ import type { ImageEl } from '../types';
 export interface ImageNodeProps {
   element: ImageEl;
   isSelected: boolean;
-  /** Recebe o evento do Konva: Ctrl/Cmd/Shift soma/remove da seleção. */
-  onSelect: (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => void;
-  onChange: (patch: Partial<ImageEl>) => void;
+  /** Recebe o id e o evento do Konva: Ctrl/Cmd/Shift soma/remove da seleção. */
+  onSelect: (id: string, e: Konva.KonvaEventObject<Event>) => void;
+  onChange: (id: string, patch: Partial<ImageEl>) => void;
   onDragMoveSnap: (node: Konva.Node) => void;
   onDragEndSnap: () => void;
 }
@@ -25,7 +25,7 @@ export interface ImageNodeProps {
  *
  * O Group nasce com `imageId` em userData para o export esperar o load.
  */
-export const ImageNode: React.FC<ImageNodeProps> = ({
+const ImageNodeImpl: React.FC<ImageNodeProps> = ({
   element,
   onChange,
   onDragEndSnap,
@@ -51,14 +51,14 @@ export const ImageNode: React.FC<ImageNodeProps> = ({
       scaleY={element.scale}
       draggable
       data={{ userImageId: element.imageId }}
-      onClick={onSelect}
-      onTap={onSelect}
+      onClick={(e) => onSelect(element.id, e)}
+      onTap={(e) => onSelect(element.id, e)}
       onDragMove={(e) => {
         onDragMoveSnap(e.target);
       }}
       onDragEnd={(e) => {
         onDragEndSnap();
-        onChange({
+        onChange(element.id, {
           x: e.target.x(),
           y: e.target.y(),
         });
@@ -67,7 +67,7 @@ export const ImageNode: React.FC<ImageNodeProps> = ({
         const node = groupRef.current;
         if (!node) return;
         // A escala do Grupo é sempre positiva; flip é só da Image interna.
-        onChange({
+        onChange(element.id, {
           x: node.x(),
           y: node.y(),
           rotation: Math.round(node.rotation()),
@@ -87,3 +87,5 @@ export const ImageNode: React.FC<ImageNodeProps> = ({
     </KonvaGroup>
   );
 };
+
+export const ImageNode = React.memo(ImageNodeImpl);

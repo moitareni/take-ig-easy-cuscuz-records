@@ -28,6 +28,32 @@
   align-items: flex-start;
 }
 
+.titleRow {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.renameBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  flex: none;
+  border-radius: var(--radius-sm);
+  color: var(--c-text-muted);
+  transition: background-color var(--duration-fast) ease, color var(--duration-fast) ease;
+}
+
+.renameBtn:hover,
+.renameBtn:focus-visible {
+  background-color: var(--c-creme);
+  color: var(--c-text-main);
+}
+
 .title {
   font-size: 18px;
   color: var(--c-text-main);
@@ -127,7 +153,7 @@
 }
 
 .saveStatus.saved {
-  background-color: var(--c-verde);
+  background-color: var(--c-toast-success-bg);
   color: #ffffff;
 }
 

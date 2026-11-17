@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import { startEditor } from './helpers';
 
 const FIXTURE = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures', 'foto.png');
@@ -238,5 +238,65 @@ test.describe('Etapa 3 - Imagens do usuário', () => {
     // Nenhum texto do painel usa travessão
     const textos = await panel.locator('strong, p, span').allInnerTexts();
     expect(textos.join(' ')).not.toContain('—');
+  });
+});
+
+
+test.describe('Ctrl+V na folha', () => {
+  test.use({ permissions: ['clipboard-read', 'clipboard-write'] });
+
+  async function copyFixtureImage(page: Page) {
+    const png = await fs.readFile(FIXTURE);
+    await page.evaluate(async (b64) => {
+      const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: 'image/png' });
+      await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+    }, png.toString('base64'));
+  }
+
+  async function imageCount(page: Page): Promise<number> {
+    return page.evaluate(
+      () =>
+        (
+          window as unknown as {
+            __useEditor: { getState: () => { doc: { elements: { kind: string }[] } } };
+          }
+        ).__useEditor
+          .getState()
+          .doc.elements.filter((e) => e.kind === 'image').length,
+    );
+  }
+
+  test('cola a imagem da área de transferência: entra selecionada e abre a aba de imagem', async ({ page }) => {
+    await page.goto('/');
+    await startEditor(page);
+    // Começa no Passo 1 (Fundo): o paste precisa levar o painel para a etapa de imagens.
+    await expect(page.getByRole('heading', { name: /1\. Escolha o fundo/ })).toBeVisible();
+
+    await copyFixtureImage(page);
+    await page.keyboard.press('Control+v');
+
+    await expect(page.locator('h2')).toContainText('3. Sua imagem');
+    await expect(page.locator('text=Na folha (1/5)')).toBeVisible();
+    await expect(page.getByText('Imagem Selecionada')).toBeVisible();
+    await expect(page.locator('button[title="Imagem colada"]')).toBeVisible();
+
+    // Segunda colagem: soma outra imagem
+    await copyFixtureImage(page);
+    await page.keyboard.press('Control+v');
+    await expect(page.locator('text=Na folha (2/5)')).toBeVisible();
+  });
+
+  test('sem imagem na área de transferência não cola nada', async ({ page }) => {
+    await page.goto('/');
+    await startEditor(page);
+
+    await page.evaluate(() => navigator.clipboard.writeText('só texto, nada de imagem'));
+    await page.keyboard.press('Control+v');
+    await page.waitForTimeout(600);
+
+    // Continua no Passo 1 e nenhuma imagem entrou na folha
+    await expect(page.getByRole('heading', { name: /1\. Escolha o fundo/ })).toBeVisible();
+    expect(await imageCount(page)).toBe(0);
   });
 });

@@ -2,21 +2,16 @@ import { useMemo } from 'react';
 import { create } from 'zustand';
 import { temporal } from 'zundo';
 import {
-  BORDER_TEXTURE_OPACITY_DEFAULT,
   BORDER_TEXTURE_OPACITY_MAX,
   BORDER_TEXTURE_OPACITY_MIN,
-  FINISH_ENABLED_DEFAULT,
   GRAIN_INTENSITY_MAX,
   GRAIN_INTENSITY_MIN,
-  GRAIN_INTENSITY_DEFAULT,
-  GRAIN_SIZE_DEFAULT,
   GRAIN_SIZES,
   GUIDE_MARGIN_DEFAULT,
   GUIDE_MARGIN_MAX,
   GUIDE_MARGIN_MIN,
   LOGO_MARGIN,
   LOGO_SIZES,
-  PAPER_OPACITY_DEFAULT,
   PAPER_OPACITY_MAX,
   PAPER_OPACITY_MIN,
   POST_H,
@@ -27,10 +22,19 @@ import {
   type PostFormat,
   type TextStyle,
 } from '../brand/brand';
-import { getBackground, getDecoration, getLogo } from '../assets';
+import { getDecoration, getLogo } from '../assets';
 import { clampTextSize } from '../lib/textRules';
 import { clampZoom } from '../lib/zoom';
-import { clampImageCenter, hasImageSlots, initialImageScale, isPersistedImage } from '../lib/imageRules';
+import { clampImageCenter, hasImageSlots, initialImageScale } from '../lib/imageRules';
+import {
+  boxSize,
+  clampInt,
+  defaultFinish,
+  emptyDoc,
+  sanitize,
+  sanitizeFinish,
+  uid,
+} from '../lib/sanitize';
 import {
   applyElPatches,
   duplicateGroup,
@@ -54,6 +58,8 @@ import {
   type StepId,
   type TextEl,
 } from '../types';
+
+export { defaultFinish, emptyDoc, sanitize, sanitizeFinish };
 
 /** Metadados de uma imagem importada (o blob vive no userImages/IndexedDB). */
 export type { ImageMeta };
@@ -89,39 +95,6 @@ export interface LayoutGuides {
   showCenters: boolean;
   showThirds: boolean;
   margin: number;
-}
-
-const clampInt = (v: number, min: number, max: number) =>
-  Math.min(max, Math.max(min, Math.round(v)));
-
-export const defaultFinish = (): FinishState => ({
-  paper: { enabled: FINISH_ENABLED_DEFAULT, opacity: PAPER_OPACITY_DEFAULT },
-  grain: { enabled: FINISH_ENABLED_DEFAULT, intensity: GRAIN_INTENSITY_DEFAULT, size: GRAIN_SIZE_DEFAULT },
-  borderTexture: { enabled: FINISH_ENABLED_DEFAULT, opacity: BORDER_TEXTURE_OPACITY_DEFAULT },
-});
-
-/** Valida o acabamento restaurado (rascunho antigo ou corrompido). */
-export function sanitizeFinish(f: FinishState | undefined): FinishState {
-  const d = defaultFinish();
-  if (!f) return d;
-  return {
-    paper: {
-      enabled: f.paper?.enabled === true,
-      opacity: typeof f.paper?.opacity === 'number' ? clampInt(f.paper.opacity, PAPER_OPACITY_MIN, PAPER_OPACITY_MAX) : d.paper.opacity,
-    },
-    grain: {
-      enabled: f.grain?.enabled === true,
-      intensity: typeof f.grain?.intensity === 'number' ? clampInt(f.grain.intensity, GRAIN_INTENSITY_MIN, GRAIN_INTENSITY_MAX) : d.grain.intensity,
-      size: f.grain?.size && f.grain.size in GRAIN_SIZES ? f.grain.size : d.grain.size,
-    },
-    borderTexture: {
-      enabled: f.borderTexture?.enabled === true,
-      opacity:
-        typeof f.borderTexture?.opacity === 'number'
-          ? clampInt(f.borderTexture.opacity, BORDER_TEXTURE_OPACITY_MIN, BORDER_TEXTURE_OPACITY_MAX)
-          : d.borderTexture.opacity,
-    },
-  };
 }
 
 export interface EditorState {
@@ -211,16 +184,6 @@ const selection = (ids: string[]) => ({
   selectedId: ids.length === 1 ? ids[0] : null,
 });
 
-export const emptyDoc = (): Doc => ({
-  format: '3:4',
-  backgroundId: null,
-  backgroundFlipX: false,
-  backgroundFlipY: false,
-  backgroundOffsetY: 180,
-  elements: [],
-});
-const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
-
 /** Evita empilhar elementos novos exatamente no mesmo ponto. */
 function freeCenter(elements: El[], x = POST_W / 2, y = POST_H / 2) {
   let cx = x;
@@ -276,33 +239,15 @@ export function setTextBoxMeasurer(measurer: TextBoxMeasurer | null): void {
   textBoxMeasurer = measurer;
 }
 
-const boxSize = (value: unknown): number | undefined => {
-  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) return undefined;
-  return Math.max(1, Math.round(value));
-};
-
-function sanitizeTextElement(el: El): El {
-  if (el.kind !== 'text') return el;
-  const boxWidth = boxSize(el.boxWidth);
-  // `boxHeight` de rascunhos antigos: a altura agora é sempre automática.
-  const hasLegacyHeight = Object.prototype.hasOwnProperty.call(el, 'boxHeight');
-  if (boxWidth === el.boxWidth && !hasLegacyHeight) return el;
-  const next: TextEl = { ...el };
-  if (boxWidth === undefined) delete next.boxWidth;
-  else next.boxWidth = boxWidth;
-  delete (next as TextEl & { boxHeight?: number }).boxHeight;
-  return next;
-}
-
 /**
  * Congela a área automática (durante a criação) com as dimensões atuais do
  * conteúdo. Depois disso, edições posteriores respeitam a área definida.
  */
 function freezeTextBox(el: El): El {
   if (el.kind !== 'text' || el.boxWidth !== undefined || !textBoxMeasurer) return el;
-  const boxWidth = boxSize(textBoxMeasurer(el));
-  if (boxWidth === undefined) return el;
-  return { ...el, boxWidth };
+  const width = boxSize(textBoxMeasurer(el));
+  if (width === undefined) return el;
+  return { ...el, boxWidth: width };
 }
 
 function freezeDocTextBox(doc: Doc, editingId: string | null): Doc {
@@ -322,33 +267,12 @@ export function flushTextEditing(): void {
   if (doc !== state.doc) useEditor.setState({ doc });
 }
 
-/** Remove referências a assets que não existem mais (ex.: asset apagado da pasta). */
-export function sanitize(doc: Doc | undefined): Doc {
-  if (!doc) return emptyDoc();
-  const validFormats: PostFormat[] = ['3:4', '4:3', '1:1'];
-  const format: PostFormat = validFormats.includes(doc.format as PostFormat) ? (doc.format as PostFormat) : '3:4';
-  const backgroundOffsetY = typeof doc.backgroundOffsetY === 'number' && Number.isFinite(doc.backgroundOffsetY)
-    ? Math.min(360, Math.max(0, Math.round(doc.backgroundOffsetY)))
-    : 180;
-  return {
-    format,
-    backgroundId: getBackground(doc.backgroundId) ? doc.backgroundId : null,
-    backgroundFlipX: Boolean(doc.backgroundFlipX),
-    backgroundFlipY: Boolean(doc.backgroundFlipY),
-    backgroundOffsetY,
-    elements: (doc.elements ?? [])
-      .filter(
-        (e) =>
-          // Enfeite só fica se o asset do manifest existir.
-          (e.kind !== 'decoration' || getDecoration(e.assetId)) &&
-          // Imagem do usuário só fica com metadados completos (o blob vem do IndexedDB).
-          (e.kind !== 'image' || isPersistedImage(e)),
-      )
-      .map(sanitizeTextElement),
-  };
+/** Aplica um patch parcial preservando o discriminante `kind` da união. */
+function mergeElementPatch(el: El, patch: Partial<El>): El {
+  const clean = { ...patch };
+  delete clean.kind;
+  return Object.assign({}, el, clean);
 }
-
-
 
 export const useEditor = create<EditorState>()(
   temporal(
@@ -577,7 +501,7 @@ export const useEditor = create<EditorState>()(
               // Troca a versão mantendo a largura visual.
               const oldW = getLogo(existing.variant).width * existing.scale;
               const scale = oldW / getLogo(variant).width;
-              mapEl(existing.id, (e) => ({ ...(e as LogoEl), variant, scale }));
+              mapEl(existing.id, (e) => (e.kind === 'logo' ? { ...e, variant, scale } : e));
               set(selection([existing.id]));
               return;
             }
@@ -637,8 +561,9 @@ export const useEditor = create<EditorState>()(
             // Mantém a largura visual da imagem anterior.
             const scale = cur.width > 0 && meta.width > 0 ? (cur.width * cur.scale) / meta.width : cur.scale;
             mapEl(id, (e) => {
+              if (e.kind !== 'image') return e;
               const next: ImageEl = {
-                ...(e as ImageEl),
+                ...e,
                 imageId: meta.imageId,
                 name: meta.name,
                 width: meta.width,
@@ -647,7 +572,7 @@ export const useEditor = create<EditorState>()(
               };
               if (restore) next.cutFrom = restore;
               else delete next.cutFrom;
-              return next as El;
+              return next;
             });
           },
 
@@ -664,12 +589,12 @@ export const useEditor = create<EditorState>()(
             const el = findEl(id);
             if (!el) return;
             if (el.kind === 'text' && 'fontSize' in patch && typeof patch.fontSize === 'number') {
-              const { fontSize, ...rest } = patch as Partial<TextEl>;
-              const size = get().setTextSize(id, fontSize!);
-              mapEl(id, (e) => ({ ...e, ...rest, fontSize: size }) as El);
+              const requested = patch.fontSize;
+              const size = get().setTextSize(id, requested);
+              mapEl(id, (e) => mergeElementPatch(e, { ...patch, fontSize: size }));
               return;
             }
-            mapEl(id, (e) => ({ ...e, ...patch }) as El);
+            mapEl(id, (e) => mergeElementPatch(e, patch));
           },
 
           setTextSize: (id, requested) => {
@@ -687,7 +612,8 @@ export const useEditor = create<EditorState>()(
 
             if (value !== el.fontSize || el.scale !== 1 || boxChanged) {
               mapEl(id, (e) => {
-                const next: TextEl = { ...(e as TextEl), fontSize: value, scale: 1 };
+                if (e.kind !== 'text') return e;
+                const next: TextEl = { ...e, fontSize: value, scale: 1 };
                 if (nextBoxWidth !== undefined) next.boxWidth = nextBoxWidth;
                 return next;
               });
@@ -711,7 +637,7 @@ export const useEditor = create<EditorState>()(
               get().showToast('error', 'Tá lotado! Cabem até 5 imagens por post 😅');
               return;
             }
-            const copy = { ...el, id: uid(), ...freeCenter(get().doc.elements, el.x + 32, el.y + 32) } as El;
+            const copy: El = { ...el, id: uid(), ...freeCenter(get().doc.elements, el.x + 32, el.y + 32) };
             setDoc((d) => {
               const i = d.elements.findIndex((e) => e.id === id);
               const elements = [...d.elements];
@@ -807,6 +733,21 @@ useEditor.subscribe((s, prev) => {
   if (pruned.length !== s.selectedIds.length) useEditor.setState(selection(pruned));
 });
 
+/**
+ * Carrega documento e acabamento no editor, zerando passo, seleção e histórico
+ * de Undo/Redo. Usado ao abrir, criar ou trocar slides de rascunho.
+ */
+export function resetEditorFor(doc: Doc, finish: FinishState): void {
+  useEditor.setState({
+    doc,
+    finish,
+    step: 0,
+    ...selection([]),
+    editingId: null,
+  });
+  useEditor.temporal.getState().clear();
+}
+
 export const useSelected = () => useEditor((s) => s.doc.elements.find((e) => e.id === s.selectedId) ?? null);
 /** Elementos selecionados, na ordem das camadas (referência estável enquanto doc/seleção não mudam). */
 export const useSelectedElements = () => {
@@ -817,6 +758,8 @@ export const useSelectedElements = () => {
 export const undo = () => useEditor.temporal.getState().undo();
 export const redo = () => useEditor.temporal.getState().redo();
 
+// Exposto intencionalmente em produção (dist/): a suíte E2E (Playwright sobre
+// `vite preview`) inspeciona e prepara o estado do editor via `page.evaluate`.
 if (typeof window !== 'undefined') {
   (window as unknown as Record<string, unknown>).__useEditor = useEditor;
 }

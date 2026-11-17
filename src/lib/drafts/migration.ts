@@ -1,4 +1,4 @@
-import { sanitizeFormat } from '../../store/carouselStore';
+import { sanitizeFormat } from '../sanitize';
 import { buildAutoTitle, isBodyMeaningful } from './content';
 import { getMetaValue, sanitizeDraftBody, saveDraftRecords, setMetaValue } from './repository';
 import {

@@ -1,6 +1,63 @@
 # Design Técnico — Carrossel de Posts para Instagram
 
-> **Auditoria de implementação — 12/11/2026 (prevalece sobre todo o histórico abaixo).**
+> **Release v2.0.0 — Leva 5 (17/11/2026). PREVALECE SOBRE TODO O HISTÓRICO ABAIXO,
+> INCLUSIVE AS AUDITORIAS DE 12/11/2026.** As seções "Diagrama de Fluxo de Dados",
+> "Estrutura de Dados" com `localStorage`, `ModeSelector`, `useSlideThumb`/`thumbCache`,
+> `text/plain` no DnD e `debouncedLocalStorage` são **arquitetura histórica** — não
+> reintroduzir. Fonte de verdade: `AGENTS.md` §2.13 e §§2.20–2.22.
+>
+> **Verificação:** `typecheck` ✅ · Vitest **250/28 arquivos** · build ✅ · Playwright
+> **109 passed / 3 skipped** (112 execuções).
+>
+> **1. Ponte de sincronização.** `src/store/syncEngine.ts` concentra a reação a mudanças
+> do editor: `isApplyingState()` e `withApplyingState()` mantêm um contador de profundidade
+> em `globalThis.__cuscuzSyncEngineState`; `installEditorCarouselSync()` substitui o
+> subscriber inline de `main.tsx`, é idempotente/HMR-safe e só chama
+> `carousel.updateActiveSlide(doc, finish)` fora do guarda. `primeEditorForSlide()`
+> registra `editorLoadedSlideId` antes dos subscribers e chama `resetEditorFor()`;
+> `CarouselState.activeSlideId` e `applyFinishToAll` são novos campos do state;
+> `setActiveSlide`/`switchSingleToCarousel` reconciliam e primem **antes** de um único
+> `set`. `activeEditorSlideId()` ficou sem chamadores.
+>
+> **2. Persistência e integridade.** `CarouselDraftBody` passa a incluir
+> `applyFinishToAll`, persistido por `session.ts` e lido no boot (copiando o `finish` do
+> slide ativo para todos quando ligado). `buildBody()` inclui a flag; `applyBodyToStores()`
+> calcula `safeIndex`. `repository.ts` exporta `cleanupOrphanDraftIds()` e, em
+> `duplicateDraftRecord()`, constrói `slideIdMap`, remapeia `crossFrom` e roda
+> `normalizeCrossoverOwnership()` antes de gravar. `addSlide()` limpa crossover residual à
+> direita do antigo último slide (`canElementBleedToSide(el, 'left', postW)`) e herda o
+> `finish` ativo; mensagem de limite "Máximo de 10 slides atingido!".
+>
+> **3. Tira e miniaturas.** `SlidePreview` com `RENDER_WIDTH = 160`, vivo e `React.memo`,
+> sem captura/cache; `SlideTray` de uma linha (card `+` dashed no fim, ações à direita,
+> overlay `role="status"`, `pendingFocusSlideRef`), sem `min-height: 120px`, chevrons ou
+> contador. `SlideThumb` ganhou `onMoveSlide`, botões "Mover slide N para a
+> esquerda/direita", `data-slide-id`, `aria-current` e atalho Alt+Setas. O DnD continua
+> posicional com MIME `application/x-cuscuz-slide-index`. `useSlideReorderMotion` ganhou
+> `LANDING_SAFETY_MS = 1200`, `resetMotionArtifacts()`, física a partir do ponteiro atual,
+> `Konva.stages.find(...).draw()` no `useLayoutEffect`, fade do card flutuante e setters
+> `scaleX`/`scaleY`.
+>
+> **4. Exportação e acabamentos.** `exportCarousel()` recebe
+> `activateSlide(slide, index)` por injeção (antes importava `loadSlideIntoEditor`);
+> `EditorScreen` e `HomeDraftExporter` injetam. Antes de exportar: `select(null)`,
+> `setEditing(null)`, `flushTextEditing()`, `await flushDraft()`; no `finally`, restaurar o
+> slide, as guias e só então limpar `isExporting`. `applyFinishToAll` em
+> `carouselStore.ts`: `setApplyFinishToAll(true)` propaga preservando referências iguais;
+> `false` para de propagar sem apagar o que os outros slides já tinham. A toggle aparece ao
+> lado de "Ativar/Desativar todas as texturas" (nomes completos).
+>
+> **5. Acessibilidade e performance.** `useDialogFocus()` nos três diálogos; `Button`
+> `forwardRef`; lápis "Renomear" no Header do editor; Stepper com `aria-current="step"`;
+> scrollbars ocultas na área de trabalho com gutter estável; `--c-toast-success-bg`
+> `#3f621a` e `--c-focus-ring` `#2d5a18`; `role="region" aria-label="Palco da arte"`.
+> `React.memo` nos seis nós, `useCallback` com `id` primeiro, overlay 160–320 px.
+>
+> **Ressalvas:** globals `__use*` expostos para Playwright; `Alt+Setas` na tira também move
+> o elemento selecionado; `useDialogFocus` sem `inert`; até 10 Stages Konva vivos (sem
+> virtualização); `updateActiveSlide()` descarta silenciosamente gravações divergentes.
+
+> **Auditoria de implementação — 12/11/2026 (prevalece sobre o histórico abaixo, exceto pelo bloco da Leva 5 acima).**
 > A implementação atual substituiu quatro decisões do desenho inicial:
 >
 > 1. **Entrada e armazenamento:** não existem `ModeSelector`, boot direto no
@@ -63,6 +120,12 @@
 > - **Textura (Leva 3)**: cada acabamento vira um cartão compacto sem texto explicativo, com checkbox do tema (``Checkbox``) no canto superior direito e liga/desliga ao clicar no cartão todo; os botões "Ligado/Desligado" saíram; "Ver prévia da textura" virou o botão "Prévia da textura", visível só no hover do cartão; "Ativar todas" vira "Desativar todas" (``disableAllFinishes()``, um único passo de undo). Ver ``AGENTS.md`` §2.8.
 
 ## Visão Geral
+
+> **AVISO — todo o corpo desta seção até o "Apêndice — Arquitetura v3" é DOCUMENTAÇÃO
+> HISTÓRICA.** Ele descreve o desenho original (`ModeSelector`, `localStorage`,
+> `useSlideThumb`, cache de `dataUrl`, `text/plain`, React.lazy da tira). O desenho em
+> execução está no bloco da Leva 5 no topo deste arquivo e no `AGENTS.md` §2.13. Não
+> reintroduzir nenhum desses mecanismos.
 
 O Modo Carrossel é adicionado ao Cuscuz Records Insta Kit como uma camada **orquestadora** que envolve o editor existente. O editor de 6 etapas (`useEditor` + `EditorCanvas`) não é refatorado; em vez disso, o novo `useCarousel` assume o papel de gerenciar a lista de slides e sincronizar o slide ativo com o editor. O Modo Post Único continua funcionando exatamente como antes, sem nenhuma alteração.
 

@@ -2,6 +2,7 @@ import React from 'react';
 import { FlipHorizontal, FlipVertical } from 'lucide-react';
 import { useEditor } from '../store/editorStore';
 import { IconButton } from './ui/IconButton';
+import { ToolGroupTitle, ToolSubgroupTitle } from './ui/ToolGroupTitle';
 import styles from './AlignToolbar.module.css';
 
 export const BackgroundMirrorToolbar: React.FC = () => {
@@ -17,21 +18,25 @@ export const BackgroundMirrorToolbar: React.FC = () => {
 
   return (
     <aside aria-label="Ações do fundo" className={styles.toolbar}>
-      <div className={styles.group}>
-        <IconButton
-          icon={<FlipHorizontal size={17} strokeWidth={2.5} />}
-          label="Espelhar fundo ↔"
-          size="sm"
-          active={backgroundFlipX}
-          onClick={toggleBackgroundFlipX}
-        />
-        <IconButton
-          icon={<FlipVertical size={17} strokeWidth={2.5} />}
-          label="Espelhar fundo ↕"
-          size="sm"
-          active={backgroundFlipY}
-          onClick={toggleBackgroundFlipY}
-        />
+      <ToolGroupTitle label="Opções do fundo" />
+      <div className={styles.section}>
+        <ToolSubgroupTitle label="Espelhar" />
+        <div className={styles.group}>
+          <IconButton
+            icon={<FlipHorizontal size={17} strokeWidth={2.5} />}
+            label="Espelhar fundo ↔"
+            size="sm"
+            active={backgroundFlipX}
+            onClick={toggleBackgroundFlipX}
+          />
+          <IconButton
+            icon={<FlipVertical size={17} strokeWidth={2.5} />}
+            label="Espelhar fundo ↕"
+            size="sm"
+            active={backgroundFlipY}
+            onClick={toggleBackgroundFlipY}
+          />
+        </div>
       </div>
     </aside>
   );

@@ -149,29 +149,30 @@ export function canElementBleedToSide(
   const span = getElementHorizSpan(el, postW);
   if (!span) return false;
 
-  if (side === 'right') {
-    if (el.crossover) {
-      return (
-        (span.minX < postW && span.maxX > postW) ||
-        (span.maxX > postW - CROSSOVER_ZONE &&
-          span.minX < postW + CROSSOVER_ZONE &&
-          el.x > postW / 2 &&
-          el.x < postW * 1.5)
-      );
+  if (!el.crossover && !isCrossoverCopy(el)) {
+    if (el.crossover === false) return false;
+    if (side === 'right') {
+      return span.minX < postW && span.maxX > postW && el.x > postW;
     }
-    return span.minX < postW && span.maxX > postW && el.x > postW * 0.65;
-  } else {
-    if (el.crossover) {
-      return (
-        (span.minX < 0 && span.maxX > 0) ||
-        (span.maxX > -CROSSOVER_ZONE &&
-          span.minX < CROSSOVER_ZONE &&
-          el.x > -postW / 2 &&
-          el.x < postW / 2)
-      );
-    }
-    return span.minX < 0 && span.maxX > 0 && el.x < postW * 0.35;
+    return span.minX < 0 && span.maxX > 0 && el.x < 0;
   }
+
+  if (side === 'right') {
+    return (
+      (span.minX < postW && span.maxX > postW) ||
+      (span.maxX > postW - CROSSOVER_ZONE &&
+        span.minX < postW + CROSSOVER_ZONE &&
+        el.x > postW / 2 &&
+        el.x < postW * 1.5)
+    );
+  }
+  return (
+    (span.minX < 0 && span.maxX > 0) ||
+    (span.maxX > -CROSSOVER_ZONE &&
+      span.minX < CROSSOVER_ZONE &&
+      el.x > -postW / 2 &&
+      el.x < postW / 2)
+  );
 }
 
 /**

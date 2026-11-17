@@ -68,7 +68,7 @@ button:focus-visible,
 input:focus-visible,
 textarea:focus-visible,
 summary:focus-visible {
-  outline: 3px solid var(--c-verde);
+  outline: 3px solid var(--c-focus-ring);
   outline-offset: 2px;
 }
 

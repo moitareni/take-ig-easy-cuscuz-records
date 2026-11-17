@@ -22,6 +22,7 @@ import {
 } from '../lib/drafts/session';
 import { exportDraftsBackup } from '../lib/drafts/backup';
 import type { DraftMeta } from '../lib/drafts/types';
+import { useDialogFocus } from '../hooks/useDialogFocus';
 import { useDraftsStore } from '../store/draftsStore';
 import { useEditor } from '../store/editorStore';
 import { Button } from '../components/ui/Button';
@@ -292,6 +293,13 @@ export const HomeScreen: React.FC = () => {
   const [deleting, setDeleting] = useState<DraftMeta | null>(null);
   const [creatingCarousel, setCreatingCarousel] = useState(false);
   const [carouselFormat, setCarouselFormat] = useState<PostFormat>('3:4');
+  const carouselDialogRef = useRef<HTMLDivElement>(null);
+
+  useDialogFocus({
+    isOpen: creatingCarousel,
+    dialogRef: carouselDialogRef,
+    onClose: () => setCreatingCarousel(false),
+  });
 
   useEffect(() => {
     const unsubscribe = onDraftsChanged(() => {
@@ -516,6 +524,8 @@ export const HomeScreen: React.FC = () => {
       {creatingCarousel && (
         <div className={styles.backdrop} onMouseDown={() => setCreatingCarousel(false)}>
           <div
+            ref={carouselDialogRef}
+            tabIndex={-1}
             className={styles.dialog}
             role="dialog"
             aria-modal="true"

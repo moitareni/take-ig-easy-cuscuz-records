@@ -1,4 +1,6 @@
 :root {
+  color-scheme: light;
+
   /* Paleta Oficial da Marca */
   --c-amarelo: #f8ce2b;
   --c-amarelo-quente: #f6c01f;
@@ -16,7 +18,8 @@
   --c-text-main: #0b0500;
   --c-text-muted: #5e4b3c;
   --c-toast-error-bg: #942911;
-  --c-toast-success-bg: #698f3f;
+  --c-toast-success-bg: #3f621a;
+  --c-focus-ring: #2d5a18;
 
   /* Tipografia */
   --font-headline: 'Londrina Solid', cursive, sans-serif;

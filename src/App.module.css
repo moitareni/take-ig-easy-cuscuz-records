@@ -30,6 +30,14 @@
 .stepContent {
   flex: 1;
   overflow-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.stepContent::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
 }
 
 .workspaceColumn {
@@ -78,20 +86,30 @@
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 12px;
-  width: 148px;
+  gap: 8px;
+  /* Larga o suficiente para o card de opções em duas colunas; todos os cards
+     do dock esticam na mesma largura (align-items: stretch). */
+  width: 210px;
   z-index: 30;
   max-height: calc(100% - 24px);
   overflow-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
   padding: 2px;
 }
 
-/* Grupo Desfazer / Refazer no dock lateral */
-.dockHistory {
+.dock::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+/* Grupo Desfazer / Refazer no dock lateral: card com o nome do grupo dentro */
+.dockHistoryCard {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: 8px;
+  gap: 4px;
   background-color: var(--c-surface);
   border: 3px solid var(--c-border);
   border-radius: var(--radius-md);
@@ -101,10 +119,20 @@
   animation: cutePop 0.2s var(--ease-bounce);
 }
 
+.dockHistory {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+}
+
 @media (max-width: 640px) {
   .dock {
     right: 8px;
     gap: 8px;
+    /* No mobile o dock continua estreito (o card de opções vira uma coluna) */
+    width: 148px;
   }
   .slideBadge {
     top: 8px;

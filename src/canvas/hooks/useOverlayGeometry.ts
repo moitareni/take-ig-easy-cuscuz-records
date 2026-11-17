@@ -1,17 +1,14 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { RefObject } from 'react';
 import type Konva from 'konva';
-import {
-  MIRROR_PATCH_VERSION,
-  mirrorFitNodesInto,
-  mirrorGetTransform,
-  transformerProto,
-  type MirrorHost,
-} from '../mirrorTransformer';
+import { applyMirrorTransformerSlack } from '../mirrorTransformer';
 
-// Folga mínima (px de tela) além das bordas do canvas principal, para que as
-// alças continuem visíveis/clicáveis com o elemento arrastado bem longe.
-const OVERLAY_SLACK_MIN = 520;
+// Folga limitada (px de tela) além das bordas do canvas principal: garante alças
+// clicáveis perto das bordas sem inflar o canvas secundário na GPU.
+const OVERLAY_SLACK_MIN = 160;
+const OVERLAY_SLACK_MAX = 320;
+const clampSlack = (raw: number) =>
+  Math.min(OVERLAY_SLACK_MAX, Math.max(OVERLAY_SLACK_MIN, Math.ceil(raw)));
 
 export interface OverlaySize {
   w: number;
@@ -85,16 +82,10 @@ export function useOverlayGeometry(
       const originY = mainRect.top - cRect.top + c.scrollTop;
       const maxSx = Math.max(0, c.scrollWidth - c.clientWidth);
       const maxSy = Math.max(0, c.scrollHeight - c.clientHeight);
-      const slackL = Math.max(OVERLAY_SLACK_MIN, Math.ceil(originX + maxSx));
-      const slackT = Math.max(OVERLAY_SLACK_MIN, Math.ceil(originY + maxSy));
-      const slackR = Math.max(
-        OVERLAY_SLACK_MIN,
-        Math.ceil(c.scrollWidth - (originX + displayWidth + 2 * padX))
-      );
-      const slackB = Math.max(
-        OVERLAY_SLACK_MIN,
-        Math.ceil(c.scrollHeight - (originY + displayHeight + 2 * padY))
-      );
+      const slackL = clampSlack(originX + maxSx);
+      const slackT = clampSlack(originY + maxSy);
+      const slackR = clampSlack(c.scrollWidth - (originX + displayWidth + 2 * padX));
+      const slackB = clampSlack(c.scrollHeight - (originY + displayHeight + 2 * padY));
       setOverlaySize((prev) => {
         const w = displayWidth + 2 * padX + slackL + slackR;
         const h = displayHeight + 2 * padY + slackT + slackB;
@@ -123,21 +114,9 @@ export function useOverlayGeometry(
   // protótipo antigo da subclasse, e propriedades próprias sombreiam esse
   // protótipo inalcançável.
   useEffect(() => {
-    const tr = trRef.current as (MirrorHost & { _mirrorSlackX: number; _mirrorSlackY: number }) | null;
+    const tr = trRef.current;
     if (!tr) return;
-    const anyTr = tr as unknown as Record<string, unknown>;
-    anyTr.getTransform = function (this: MirrorHost) {
-      return mirrorGetTransform(this, transformerProto.__mirrorBaseGetTransform!);
-    };
-    anyTr._fitNodesInto = function (this: MirrorHost, newAttrs: any, evt?: any) {
-      return mirrorFitNodesInto(this, newAttrs, evt, transformerProto.__mirrorBaseFit!);
-    };
-    anyTr.__mirrorPatchVersion = MIRROR_PATCH_VERSION;
-    tr._mirrorSlackX = overlaySize.slackL;
-    tr._mirrorSlackY = overlaySize.slackT;
-    (tr as unknown as { _resetTransformCache?: () => void })._resetTransformCache?.();
-    tr.update();
-    tr.getLayer()?.batchDraw();
+    applyMirrorTransformerSlack(tr, overlaySize.slackL, overlaySize.slackT);
     syncOverlayPosition();
   }, [overlaySize, syncOverlayPosition, trRef]);
 

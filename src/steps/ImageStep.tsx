@@ -404,6 +404,8 @@ export const ImageStep: React.FC = () => {
       setBgPanelImageId(null);
     } catch (err) {
       if (epoch !== bgRunEpochRef.current) return; // cancelado: erro não interessa mais
+      // Sem isto a falha era invisível: o toast é amigável, o diagnóstico fica no console.
+      console.error('[bgRemoval] Falha no recorte de fundo:', err);
       const code = err instanceof Error ? err.message : '';
       useEditor.getState().showToast(
         'error',

@@ -15,7 +15,7 @@ export interface BackgroundNodeProps {
   onOffsetYChange?: (offsetY: number) => void;
 }
 
-export const BackgroundNode: React.FC<BackgroundNodeProps> = ({
+const BackgroundNodeImpl: React.FC<BackgroundNodeProps> = ({
   backgroundId,
   flipX = false,
   flipY = false,
@@ -139,3 +139,5 @@ export const BackgroundNode: React.FC<BackgroundNodeProps> = ({
     />
   );
 };
+
+export const BackgroundNode = React.memo(BackgroundNodeImpl);

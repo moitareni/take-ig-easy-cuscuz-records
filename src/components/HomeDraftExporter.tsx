@@ -5,7 +5,8 @@ import { readDraftRecord } from '../lib/drafts/repository';
 import { prepareDraftForHomeExport } from '../lib/drafts/session';
 import { exportPost } from '../lib/export';
 import { CarouselExportError, exportCarousel } from '../lib/exportCarousel';
-import { useCarousel } from '../store/carouselStore';
+import { loadSlideIntoEditor, useCarousel } from '../store/carouselStore';
+import { useDraftsStore } from '../store/draftsStore';
 import { useEditor } from '../store/editorStore';
 
 export interface HomeDraftExporterProps {
@@ -64,6 +65,10 @@ export const HomeDraftExporter: React.FC<HomeDraftExporterProps> = ({ draftId, o
             format,
             stage,
             stageDisplayWidth: displayWidth,
+            activateSlide: (slide, index) => {
+              useCarousel.setState({ activeSlideIndex: index });
+              loadSlideIntoEditor(slide);
+            },
             onProgress: () => undefined,
           });
           useEditor.getState().showToast('success', 'Carrossel exportado! 🌽 Prontinho pro Insta!');
@@ -95,7 +100,9 @@ export const HomeDraftExporter: React.FC<HomeDraftExporterProps> = ({ draftId, o
         }
       } finally {
         if (guidesWereVisible) useEditor.getState().setGuidesVisible(true);
-        useCarousel.setState({ mode: null });
+        if (useDraftsStore.getState().screen !== 'editor') {
+          useCarousel.setState({ mode: null });
+        }
         if (!cancelled) onDone();
       }
     })();

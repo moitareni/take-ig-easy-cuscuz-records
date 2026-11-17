@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { normalizeCrossoverOwnership } from '../lib/crossover';
 import { loadSlideIntoEditor, useCarousel } from './carouselStore';
 import { defaultFinish, emptyDoc, useEditor } from './editorStore';
+import { installEditorCarouselSync } from './syncEngine';
 import type { El, FinishState, SlideData } from '../types';
 
 /**
@@ -82,12 +83,7 @@ const paintedPaper = (): FinishState => {
 };
 
 // Igual ao main.tsx: o doc do editor volta para o slide dono a cada mudança.
-useEditor.subscribe((state, prev) => {
-  const carousel = useCarousel.getState();
-  if (carousel.mode !== 'carousel') return;
-  if (state.doc === prev.doc && state.finish === prev.finish) return;
-  carousel.updateActiveSlide(state.doc, state.finish);
-});
+installEditorCarouselSync();
 
 /** Arte própria da página (dono = elemento sem `crossFrom`). */
 const owns = (s: SlideData): string[] =>

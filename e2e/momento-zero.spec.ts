@@ -57,7 +57,7 @@ test.describe('Momento 0 — home Meus rascunhos (release v.3)', () => {
     await expect(page.getByTestId('create-draft-trigger')).toBeVisible();
   });
 
-  test('M0.5: selo junto à folha somado ao contador da tira', async ({ page }) => {
+  test('M0.5: selo junto à folha sem contador redundante na tira', async ({ page }) => {
     await openCarousel(page, '4:3');
 
     const badge = page.getByTestId('slide-badge');
@@ -66,7 +66,8 @@ test.describe('Momento 0 — home Meus rascunhos (release v.3)', () => {
     await expect(badge).toContainText('Slide 1 de 1');
 
     await expect(page.getByRole('navigation', { name: 'Tira de slides do carrossel' })).toBeVisible();
-    await expect(page.getByText('Slide 1 de 1', { exact: true })).toHaveCount(2);
+    await expect(page.getByText('Slide 1 de 1', { exact: true })).toHaveCount(1);
+    await expect(page.getByRole('button', { name: 'Novo slide vazio' })).toHaveCount(1);
 
     const snap = await carouselSnapshot(page);
     expect(snap?.mode).toBe('carousel');

@@ -1,79 +1,30 @@
 import { create } from 'zustand';
-import { CAROUSEL_MAX_SLIDES, type PostFormat } from '../brand/brand';
+import { CAROUSEL_MAX_SLIDES, getPostDimensions, type PostFormat } from '../brand/brand';
 import {
+  canElementBleedToSide,
   isCrossoverCopy,
   pruneOrphanCrossoverCopies,
   reconcileAllCrossovers,
   syncCrossoverFromActiveSlide,
 } from '../lib/crossover';
-import type { Doc, FinishState, SlideData } from '../types';
-import {
-  defaultFinish,
-  emptyDoc,
-  flushTextEditing,
-  sanitize,
-  sanitizeFinish,
-  useEditor,
-} from './editorStore';
+import type { Doc, El, FinishState, SlideData } from '../types';
+import { defaultSlide, isSlideEmpty, sanitizeFormat, sanitizeSlide, uid } from '../lib/sanitize';
+import { flushTextEditing, resetEditorFor, useEditor } from './editorStore';
+import { isApplyingState, withApplyingState } from './syncEngine';
 
 export type CarouselMode = 'single' | 'carousel' | null;
+
+export { defaultSlide, isSlideEmpty, sanitizeFormat, sanitizeSlide };
 
 export const CAROUSEL_STORAGE_KEY = 'cuscuz-insta-kit:carrossel';
 export const SINGLE_STORAGE_KEY = 'cuscuz-insta-kit:rascunho';
 
-const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
+/** Id do slide cujo estado está efetivamente carregado no `useEditor`. */
+let editorLoadedSlideId: string | null = null;
 
-const VALID_FORMATS: PostFormat[] = ['3:4', '4:3', '1:1'];
-
-export function sanitizeFormat(f: unknown): PostFormat {
-  return VALID_FORMATS.includes(f as PostFormat) ? (f as PostFormat) : '3:4';
-}
-
-/** Cria um SlideData vazio no formato informado. */
-export function defaultSlide(format: PostFormat = '3:4'): SlideData {
-  return {
-    id: uid(),
-    doc: {
-      ...emptyDoc(),
-      format: sanitizeFormat(format),
-    },
-    finish: defaultFinish(),
-  };
-}
-
-/** Valida e sanitiza um SlideData restaurado do localStorage. */
-export function sanitizeSlide(raw: unknown, fallbackFormat?: PostFormat): SlideData {
-  const r = raw as Partial<SlideData> | null | undefined;
-  const sanitizedDoc = sanitize(r?.doc);
-  const format = fallbackFormat
-    ? sanitizeFormat(fallbackFormat)
-    : r?.doc?.format
-      ? sanitizedDoc.format ?? '3:4'
-      : '3:4';
-  return {
-    id: typeof r?.id === 'string' && r.id.trim().length > 0 ? r.id : uid(),
-    doc: {
-      ...sanitizedDoc,
-      format,
-    },
-    finish: sanitizeFinish(r?.finish),
-  };
-}
-
-/** Verifica se um slide está vazio (sem fundo, sem elementos e com acabamento padrão). */
-export function isSlideEmpty(slide: SlideData): boolean {
-  const df = defaultFinish();
-  return (
-    slide.doc.elements.length === 0 &&
-    slide.doc.backgroundId === null &&
-    slide.finish.paper.enabled === df.paper.enabled &&
-    slide.finish.paper.opacity === df.paper.opacity &&
-    slide.finish.grain.enabled === df.grain.enabled &&
-    slide.finish.grain.intensity === df.grain.intensity &&
-    slide.finish.grain.size === df.grain.size &&
-    slide.finish.borderTexture.enabled === df.borderTexture.enabled &&
-    slide.finish.borderTexture.opacity === df.borderTexture.opacity
-  );
+/** Id do slide efetivamente carregado no `useEditor` (evita gravar doc velho no slide novo). */
+export function getEditorLoadedSlideId(): string | null {
+  return editorLoadedSlideId;
 }
 
 /**
@@ -83,17 +34,20 @@ function enforceValidCrossover(slides: SlideData[], format: PostFormat = '3:4'):
   return reconcileAllCrossovers(slides, format);
 }
 
-/**
- * Slide cujo `doc` está carregado no `useEditor`. A posse é pelo **id** do
- * slide, nunca pelo índice: depois de reordenar/remover páginas o índice pode
- * estar defasado por um frame, e gravar pelo índice jogava o doc inteiro
- * (fundo, textura, elementos) na página errada.
- */
-let editingSlideId: string | null = null;
-
 /** Id do slide que está no editor (usado por testes e pelo autosave). */
 export function activeEditorSlideId(): string | null {
-  return editingSlideId;
+  return useCarousel.getState().activeSlideId;
+}
+
+/**
+ * Prepara `useEditor` e registra a posse do slide carregado ANTES de disparar
+ * subscribers síncronos do `useCarousel`.
+ */
+function primeEditorForSlide(slide: SlideData): void {
+  editorLoadedSlideId = slide.id;
+  withApplyingState(() => {
+    resetEditorFor(slide.doc, slide.finish);
+  });
 }
 
 /**
@@ -101,16 +55,8 @@ export function activeEditorSlideId(): string | null {
  * limpa o histórico temporal para isolar o undo/redo por slide.
  */
 export function loadSlideIntoEditor(slide: SlideData): void {
-  editingSlideId = slide.id;
-  useEditor.setState({
-    doc: slide.doc,
-    finish: slide.finish,
-    step: 0,
-    selectedIds: [],
-    selectedId: null,
-    editingId: null,
-  });
-  useEditor.temporal.getState().clear();
+  primeEditorForSlide(slide);
+  useCarousel.setState({ activeSlideId: slide.id });
 }
 
 /**
@@ -127,16 +73,38 @@ function resyncEditorDoc(slide: SlideData): void {
   const ids = new Set(slide.doc.elements.map((el) => el.id));
   const temporal = useEditor.temporal.getState();
   temporal.pause();
-  try {
-    useEditor.setState({
-      doc: slide.doc,
-      selectedIds: editor.selectedIds.filter((id) => ids.has(id)),
-      selectedId: editor.selectedId && ids.has(editor.selectedId) ? editor.selectedId : null,
-      editingId: editor.editingId && ids.has(editor.editingId) ? editor.editingId : null,
-    });
-  } finally {
-    temporal.resume();
-  }
+  withApplyingState(() => {
+    try {
+      useEditor.setState({
+        doc: slide.doc,
+        selectedIds: editor.selectedIds.filter((id) => ids.has(id)),
+        selectedId: editor.selectedId && ids.has(editor.selectedId) ? editor.selectedId : null,
+        editingId: editor.editingId && ids.has(editor.editingId) ? editor.editingId : null,
+      });
+    } finally {
+      temporal.resume();
+    }
+  });
+}
+
+function cloneFinish(finish: FinishState): FinishState {
+  return {
+    paper: { ...finish.paper },
+    grain: { ...finish.grain },
+    borderTexture: { ...finish.borderTexture },
+  };
+}
+
+function finishesEqual(a: FinishState, b: FinishState): boolean {
+  return (
+    a.paper.enabled === b.paper.enabled &&
+    a.paper.opacity === b.paper.opacity &&
+    a.grain.enabled === b.grain.enabled &&
+    a.grain.intensity === b.grain.intensity &&
+    a.grain.size === b.grain.size &&
+    a.borderTexture.enabled === b.borderTexture.enabled &&
+    a.borderTexture.opacity === b.borderTexture.opacity
+  );
 }
 
 function cloneDocAndFinish(doc: Doc, finish: FinishState, format: PostFormat): { doc: Doc; finish: FinishState } {
@@ -151,16 +119,20 @@ function cloneDocAndFinish(doc: Doc, finish: FinishState, format: PostFormat): {
   clonedDoc.elements = clonedDoc.elements
     .filter((el) => !isCrossoverCopy(el))
     .map((el) => ({ ...el, id: uid() }));
-  const clonedFinish: FinishState = JSON.parse(JSON.stringify(finish));
+  const clonedFinish = cloneFinish(finish);
   return { doc: clonedDoc, finish: clonedFinish };
 }
 
 export interface CarouselState {
-  // ── Dados persistidos no localStorage ───────────────────────
+  // ── Estado em memória (persistido no IndexedDB de rascunhos) ────
   slides: SlideData[];
   activeSlideIndex: number;
+  /** Id do slide atualmente carregado no `useEditor` (posse explícita contra reordenação). */
+  activeSlideId: string | null;
   format: PostFormat;
   mode: CarouselMode;
+  /** Quando ativo no carrossel, mudanças de textura são aplicadas em todos os slides. */
+  applyFinishToAll: boolean;
 
   // ── Estado de sessão (não persiste) ─────────────────────────
   isExporting: boolean;
@@ -169,6 +141,7 @@ export interface CarouselState {
   // ── Actions ─────────────────────────────────────────────────
   setMode: (mode: CarouselMode) => void;
   setFormat: (format: PostFormat) => void;
+  setApplyFinishToAll: (enabled: boolean) => void;
   addSlide: () => void;
   duplicateSlide: (index: number) => void;
   removeSlide: (index: number) => void;
@@ -180,22 +153,30 @@ export interface CarouselState {
   resetCarousel: () => void;
 }
 
+const initialSlide = defaultSlide('3:4');
+
 export const useCarousel = create<CarouselState>()(
   (set, get) => ({
-      slides: [defaultSlide('3:4')],
+      slides: [initialSlide],
       activeSlideIndex: 0,
+      activeSlideId: null,
       format: '3:4',
       mode: null,
+      applyFinishToAll: true,
       isExporting: false,
       exportProgress: null,
 
       setMode: (mode) => {
-        set({ mode });
         if (mode === 'carousel') {
           const { slides, activeSlideIndex } = get();
           const active = slides[activeSlideIndex];
-          if (active) loadSlideIntoEditor(active);
+          if (active) {
+            primeEditorForSlide(active);
+            set({ mode, activeSlideId: active.id });
+            return;
+          }
         }
+        set({ mode });
       },
 
       setFormat: (format) => {
@@ -209,6 +190,42 @@ export const useCarousel = create<CarouselState>()(
         }));
       },
 
+      setApplyFinishToAll: (enabled) =>
+        set((s) => {
+          const byId = s.activeSlideId
+            ? s.slides.findIndex((slide) => slide.id === s.activeSlideId)
+            : -1;
+          const index = byId >= 0 ? byId : s.activeSlideIndex;
+          const activeFinish = useEditor.getState().finish;
+
+          if (enabled) {
+            const slides = s.slides.map((sl) =>
+              finishesEqual(sl.finish, activeFinish)
+                ? sl
+                : { ...sl, finish: cloneFinish(activeFinish) },
+            );
+            const changed = slides.some((sl, i) => sl !== s.slides[i]);
+            if (s.applyFinishToAll && !changed) return s;
+            return {
+              applyFinishToAll: true,
+              ...(changed ? { slides } : {}),
+            };
+          }
+
+          // Desativar "Aplicar em todos os slides" apenas para de propagar
+          // mudanças futuras; os demais slides mantêm suas texturas atuais.
+          const slides = s.slides.map((sl, i) => {
+            if (i !== index || finishesEqual(sl.finish, activeFinish)) return sl;
+            return { ...sl, finish: cloneFinish(activeFinish) };
+          });
+          const changed = slides.some((sl, i) => sl !== s.slides[i]);
+          if (!s.applyFinishToAll && !changed) return s;
+          return {
+            applyFinishToAll: false,
+            ...(changed ? { slides } : {}),
+          };
+        }),
+
       addSlide: () => {
         // Fecha a edição de texto pendente antes de trocar o slide ativo.
         flushTextEditing();
@@ -216,14 +233,35 @@ export const useCarousel = create<CarouselState>()(
         if (s.slides.length >= CAROUSEL_MAX_SLIDES) {
           useEditor
             .getState()
-            .showToast('info', 'Chegou no limite! Um carrossel pode ter até 10 slides 🎠');
+            .showToast('info', 'Máximo de 10 slides atingido!');
           return;
         }
-        const newSlide = defaultSlide(s.format);
-        const slides = enforceValidCrossover([...s.slides, newSlide], s.format);
+        const { width: postW } = getPostDimensions(s.format);
+        // Antes de criar a nova página no fim, limpa eventual flag `crossover`
+        // residual à direita no antigo último slide (não havia vizinha à direita).
+        const prevSlides = s.slides.map((sl, idx) => {
+          if (idx !== s.slides.length - 1) return sl;
+          let changed = false;
+          const cleanedElements = sl.doc.elements.map((el) => {
+            if (isCrossoverCopy(el) || el.crossover === undefined) return el;
+            const bleedsLeft = s.slides.length > 1 && canElementBleedToSide(el, 'left', postW);
+            if (bleedsLeft) return el;
+            changed = true;
+            const nextEl: El = { ...el };
+            delete nextEl.crossover;
+            return nextEl;
+          });
+          return changed ? { ...sl, doc: { ...sl.doc, elements: cleanedElements } } : sl;
+        });
+        const baseSlide = defaultSlide(s.format);
+        const newSlide = s.applyFinishToAll
+          ? { ...baseSlide, finish: cloneFinish(useEditor.getState().finish) }
+          : baseSlide;
+        const slides = enforceValidCrossover([...prevSlides, newSlide], s.format);
         const activeSlideIndex = slides.length - 1;
-        set({ slides, activeSlideIndex });
-        loadSlideIntoEditor(slides[activeSlideIndex]);
+        const targetSlide = slides[activeSlideIndex];
+        primeEditorForSlide(targetSlide);
+        set({ slides, activeSlideIndex, activeSlideId: targetSlide.id });
       },
 
       duplicateSlide: (index) => {
@@ -233,7 +271,7 @@ export const useCarousel = create<CarouselState>()(
         if (s.slides.length >= CAROUSEL_MAX_SLIDES) {
           useEditor
             .getState()
-            .showToast('info', 'Chegou no limite! Um carrossel pode ter até 10 slides 🎠');
+            .showToast('info', 'Máximo de 10 slides atingido!');
           return;
         }
         const source = s.slides[index];
@@ -247,8 +285,9 @@ export const useCarousel = create<CarouselState>()(
         nextSlides.splice(index + 1, 0, duplicated);
         const slides = enforceValidCrossover(nextSlides, s.format);
         const activeSlideIndex = index + 1;
-        set({ slides, activeSlideIndex });
-        loadSlideIntoEditor(slides[activeSlideIndex]);
+        const targetSlide = slides[activeSlideIndex];
+        primeEditorForSlide(targetSlide);
+        set({ slides, activeSlideIndex, activeSlideId: targetSlide.id });
       },
 
       removeSlide: (index) => {
@@ -271,8 +310,9 @@ export const useCarousel = create<CarouselState>()(
         } else {
           newActive = Math.min(s.activeSlideIndex, slides.length - 1);
         }
-        set({ slides, activeSlideIndex: newActive });
-        loadSlideIntoEditor(slides[newActive]);
+        const targetSlide = slides[newActive];
+        primeEditorForSlide(targetSlide);
+        set({ slides, activeSlideIndex: newActive, activeSlideId: targetSlide.id });
       },
 
       reorderSlides: (fromIndex, toIndex) => {
@@ -307,18 +347,22 @@ export const useCarousel = create<CarouselState>()(
 
           // A página ativa é a que está no editor (posse por id), não o índice
           // antigo: se algo defasou, quem manda é o doc que a usuária vê.
-          const editorIndex = editingSlideId
-            ? slides.findIndex((slide) => slide.id === editingSlideId)
+          const editorIndex = s.activeSlideId
+            ? slides.findIndex((slide) => slide.id === s.activeSlideId)
             : -1;
           const newActive = editorIndex >= 0 ? editorIndex : shiftIndex(s.activeSlideIndex);
 
-          return { slides, activeSlideIndex: newActive };
+          return {
+            slides,
+            activeSlideIndex: newActive,
+            activeSlideId: slides[newActive]?.id ?? s.activeSlideId,
+          };
         });
 
         // O prune pode ter tirado uma cópia órfã do slide que está no palco.
         const after = get();
         const active = after.slides[after.activeSlideIndex];
-        if (active && editingSlideId === active.id) resyncEditorDoc(active);
+        if (active && after.activeSlideId === active.id) resyncEditorDoc(active);
       },
 
       setActiveSlide: (index) => {
@@ -327,30 +371,34 @@ export const useCarousel = create<CarouselState>()(
         flushTextEditing();
         const s = get();
         if (index < 0 || index >= s.slides.length) return;
-        set({ activeSlideIndex: index });
-        loadSlideIntoEditor(s.slides[index]);
         // A cópia de crossover precisa estar no DOC da página: o espelho é
-        // desenhado, mas não recebe clique. Reconciliar aqui garante a página
-        // vizinha interativa já no primeiro frame — inclusive quando o estado
-        // salvo veio de uma sessão em que a cópia ficou para trás.
+        // desenhado, mas não recebe clique. Reconciliar antes de carregar
+        // garante a página vizinha interativa já no primeiro frame e evita
+        // disparar subscribers com `useEditor` apontando para o slide anterior.
         const reconciled = reconcileAllCrossovers(s.slides, s.format);
-        if (reconciled === s.slides) return;
-        set({ slides: reconciled });
-        const byId = editingSlideId
-          ? reconciled.findIndex((slide) => slide.id === editingSlideId)
-          : -1;
+        const targetId = s.slides[index].id;
+        const byId = reconciled.findIndex((slide) => slide.id === targetId);
         const activeIndex = byId >= 0 ? byId : index;
-        set({ activeSlideIndex: activeIndex });
         const active = reconciled[activeIndex];
-        if (active) resyncEditorDoc(active);
+        if (!active) return;
+        primeEditorForSlide(active);
+        set({
+          ...(reconciled !== s.slides ? { slides: reconciled } : {}),
+          activeSlideIndex: activeIndex,
+          activeSlideId: active.id,
+        });
       },
 
       updateActiveSlide: (doc, finish) => {
+        if (isApplyingState()) return;
         set((s) => {
           // Grava pelo DONO do doc (id do slide carregado no editor). Se o
           // índice estiver defasado, corrige — o doc nunca cai na página errada.
-          const byId = editingSlideId
-            ? s.slides.findIndex((slide) => slide.id === editingSlideId)
+          if (editorLoadedSlideId !== null && s.activeSlideId && editorLoadedSlideId !== s.activeSlideId) {
+            return s;
+          }
+          const byId = s.activeSlideId
+            ? s.slides.findIndex((slide) => slide.id === s.activeSlideId)
             : -1;
           const index = byId >= 0 ? byId : s.activeSlideIndex;
           const slide = s.slides[index];
@@ -358,9 +406,15 @@ export const useCarousel = create<CarouselState>()(
           // Nada mudou no palco (ex.: `resyncEditorDoc` devolveu o doc já
           // podado): reagir aqui materializaria sangria em vizinha nova, o que
           // a reordenação não deve fazer.
-          if (slide.doc === doc && slide.finish === finish) return s;
+          if (
+            slide.doc === doc &&
+            slide.finish === finish &&
+            (!s.applyFinishToAll || s.slides.every((sl) => finishesEqual(sl.finish, finish)))
+          ) {
+            return s;
+          }
           const normalizedDoc = doc.format === s.format ? doc : { ...doc, format: s.format };
-          const slides = syncCrossoverFromActiveSlide(
+          let slides = syncCrossoverFromActiveSlide(
             s.slides,
             index,
             slide.doc,
@@ -368,16 +422,28 @@ export const useCarousel = create<CarouselState>()(
             finish,
             s.format,
           );
-          if (slides === s.slides && index === s.activeSlideIndex) return s;
-          return { slides, activeSlideIndex: index };
+          if (s.applyFinishToAll) {
+            let propagated = false;
+            const withFinish = slides.map((sl, i) => {
+              if (i === index || finishesEqual(sl.finish, finish)) return sl;
+              propagated = true;
+              return { ...sl, finish: cloneFinish(finish) };
+            });
+            if (propagated) slides = withFinish;
+          }
+          const nextActiveId = slides[index]?.id ?? slide.id;
+          if (slides === s.slides && index === s.activeSlideIndex && s.activeSlideId === nextActiveId) {
+            return s;
+          }
+          return { slides, activeSlideIndex: index, activeSlideId: nextActiveId };
         });
         // O sync pode normalizar marcas e remover cópias fantasmas do doc ativo.
         // O palco precisa ficar com o MESMO doc que o store gravou; senão a
         // próxima edição parte de um `prevActiveDoc` diferente do que está na
         // tela (e arrastar o fantasma não espelharia para lugar nenhum).
         const after = get();
-        const byId = editingSlideId
-          ? after.slides.findIndex((slide) => slide.id === editingSlideId)
+        const byId = after.activeSlideId
+          ? after.slides.findIndex((slide) => slide.id === after.activeSlideId)
           : -1;
         const active = after.slides[byId >= 0 ? byId : after.activeSlideIndex];
         if (active) resyncEditorDoc(active);
@@ -390,12 +456,15 @@ export const useCarousel = create<CarouselState>()(
         }),
 
       resetCarousel: () => {
+        editorLoadedSlideId = null;
         const initial = defaultSlide('3:4');
         set({
           slides: [initial],
           activeSlideIndex: 0,
+          activeSlideId: null,
           format: '3:4',
           mode: null,
+          applyFinishToAll: true,
           isExporting: false,
           exportProgress: null,
         });
@@ -415,15 +484,19 @@ export function switchSingleToCarousel(): void {
     doc: { ...doc, format },
     finish,
   };
+  primeEditorForSlide(firstSlide);
   useCarousel.setState({
+    mode: 'carousel',
     slides: [firstSlide],
     activeSlideIndex: 0,
+    activeSlideId: firstSlide.id,
     format,
+    applyFinishToAll: true,
   });
-  useCarousel.getState().setMode('carousel');
-  loadSlideIntoEditor(firstSlide);
 }
 
+// Exposto intencionalmente em produção (dist/): a suíte E2E (Playwright sobre
+// `vite preview`) inspeciona e prepara o estado dos stores via `page.evaluate`.
 if (typeof window !== 'undefined') {
   (window as unknown as Record<string, unknown>).__useCarousel = useCarousel;
 }

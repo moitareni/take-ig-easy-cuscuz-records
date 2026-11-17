@@ -1,6 +1,68 @@
 # Documento de Design Técnico — Cuscuz Records Insta Kit
 
-> **Auditoria de implementação — 12/11/2026 (prevalece sobre todo o histórico abaixo).**
+> **Release v2.0.0 — Leva 5 (17/11/2026). PREVALECE SOBRE TODO O HISTÓRICO ABAIXO,
+> INCLUSIVE AS AUDITORIAS DE 12/11/2026.** O desenho executado mudou em quatro frentes;
+> o texto histórico (diagramas com `localStorage`, tabelas de painéis antigas, tipos sem
+> `boxWidth`) permanece só como registro. Fonte de verdade: `AGENTS.md`, seções
+> 2.12–2.16 e 2.20–2.22.
+>
+> **Verificação:** `typecheck` ✅ · Vitest **250/28 arquivos** · build ✅ · Playwright
+> **109 passed / 3 skipped** (112 execuções). Números de 12/11 (215/23; 87/3) superados.
+>
+> **1. Tipos e sanitização.** `TextEl` passa a ter `brandEffectColor?: BrandColor`
+> (traçado do Efeito da Marca, resolvido por `getBrandEffectStrokeColor`), além de
+> `boxWidth?`, `crossover?`/`crossFrom?` já vigentes; `boxHeight` continua ausente.
+> `src/lib/sanitize.ts` é agora o único defines de `VALID_FORMATS`, `uid`, `clampInt`,
+> `isPostFormat`, `sanitizeFormat`, `emptyDoc`, `defaultFinish`, `defaultSlide`,
+> `sanitize`, `sanitizeSlide`, `sanitizeFinish`, `boxSize`, `sanitizeTextElement`,
+> `isSlideEmpty`; `editorStore`/`carouselStore` reexportam os nomes antigos e
+> `repository.ts` importa daqui (fim da inversão de dependência). Novo
+> `resetEditorFor(doc, finish)` unifica os quatro blocos de reset (um `set` +
+> `temporal.clear()`). Defaults de acabamento: papel 50, borda 10, grão M/60.
+>
+> **2. Sincronização e sessão.** `src/store/syncEngine.ts` substitui o subscriber de
+> `main.tsx`: `isApplyingState()` / `withApplyingState()` mantêm `applyingStateDepth` em
+> `globalThis.__cuscuzSyncEngineState`; `installEditorCarouselSync()` é idempotente e
+> HMR-safe. `lib/drafts/session.ts` consolidou 9 variáveis de módulo em
+> `globalThis.__cuscuzDraftSession` (17 campos), adicionou `ensureActiveSessionRecovered()`,
+> `resetDraftSessionForTests()` e `dispose`. O debounce caiu para **200 ms**; há
+> `COVER_REFRESH_DEBOUNCE_MS = 1200`, `changeRevision`/`latestSavedRevision` (race de save),
+> `activeSaves`, listener `window.blur`, `try/catch` no flush e `.catch()` nos listeners.
+> O novo `PENDING_CHECKPOINT_KEY = 'cuscuz-insta-kit:pending-checkpoint'` grava
+> `{ meta, body, savedAt }` no localStorage no mesmo tick do unload e é drenado no boot.
+> `getOpenEditorDbSync()` abre transação síncrona; `saveDraftRecord` só engole
+> `InvalidStateError`. `repository.ts` ganhou `cleanupOrphanDraftIds()` e, em
+> `duplicateDraftRecord`, `slideIdMap` + remapeio de `crossFrom` +
+> `normalizeCrossoverOwnership`.
+>
+> **3. Canvas e performance.** Seis nós (`BackgroundNode`, `CrossoverMirrorNode`,
+> `DecorationNode`, `ImageNode`, `LogoNode`, `TextNode`) são `React.memo(...Impl)`; os
+> callbacks do `EditorCanvas` são `useCallback` com **id como primeiro argumento**
+> (`onSelect(id,e)`, `onChange(id,patch)`, `onDoubleClick(id,e)`, `onApplyTextSize(id,n)`) —
+> não reintroduzir closures por elemento. `changeEl` lê `useEditor.getState()` em vez de
+> capturar `doc`. `useOverlayGeometry` usa folga 160–320 px (`clampSlack`) e o patch do
+> protótipo do Konva foi unificado em `applyMirrorTransformerSlack()`. `SlidePreview`
+> reduziu `RENDER_WIDTH` de 240 para 160. Capa esconde as guias no Konva
+> (`Group name="editor-guides-group"`) com restauração no `finally`; throttle por rascunho.
+>
+> **4. Novos módulos e contratos de UI.** `clipboardImages.ts` + `pasteImage.ts` (Ctrl+V),
+> `textEditorStyle.ts` (estilo do `<textarea>` in-place), `hooks/useDialogFocus.ts` (foco
+> inicial no botão seguro, trap Tab/Shift+Tab, Escape em captura, retorno de foco),
+> `components/ui/ToolGroupTitle.tsx` (etiquetas do dock) e `hooks/useSlideReorderMotion.ts`
+> (GSAP com `LANDING_SAFETY_MS = 1200`, `resetMotionArtifacts`, física a partir do ponteiro,
+> setters `scaleX`/`scaleY`). `Button` é `forwardRef`. `exportCarousel()` recebe
+> `activateSlide(slide, index)` em vez de importar a action do store; antes de exportar,
+> `EditorScreen` chama `flushTextEditing()` + `await flushDraft()` e restaura o slide no
+> `finally` na ordem correta. `bgRemoval.ts` ganhou `probeWebGPUFp16()`, `preferWasm`,
+> `isFirefoxBrowser()`, `resetBgModel()`, `inferMatte()` com retry e dispose de tensores.
+> Tokens: `--c-toast-success-bg: #3f621a`, `--c-focus-ring: #2d5a18`, `color-scheme: light`.
+>
+> **Ressalvas:** `window.__use*` segue exposto em produção para Playwright;
+> `activeEditorSlideId()` é export morto; `Alt+Setas` na tira também move o elemento
+> selecionado 1 px; `useDialogFocus` não aplica `inert`; os dois últimos Stages do
+> carrossel não são virtualizados. Detalhes em `AGENTS.md` §2.22.
+
+> **Auditoria de implementação — 12/11/2026 (prevalece sobre o histórico abaixo, exceto pelo bloco da Leva 5 acima).**
 > O design em execução não é o plano inicial baseado em `localStorage`. A aplicação
 > inicia em `App.tsx` no estado `boot`, libera a home após `bootDrafts()` e só monta
 > o editor com um rascunho ativo. `src/lib/drafts/` persiste `DraftMeta` e

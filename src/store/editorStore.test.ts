@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getLogo, manifest } from '../assets';
 import type { El, LogoEl } from '../types';
-import { effectiveLogoMargin, redo, undo, useEditor } from './editorStore';
+import { defaultFinish, effectiveLogoMargin, redo, undo, useEditor } from './editorStore';
 
 const base = { x: 100, y: 100, rotation: 0, scale: 1 };
 const deco = (id: string): El => ({ ...base, id, kind: 'decoration', assetId: 'a', flipX: false, flipY: false });
@@ -246,6 +246,13 @@ describe('formatos de post e corte de fundo', () => {
 });
 
 describe('acabamentos (etapa 6 — Textura)', () => {
+  it('defaultFinish vem com papel 50%, craquelado 10% e granulado M 60% (desligados)', () => {
+    const d = defaultFinish();
+    expect(d.paper).toEqual({ enabled: false, opacity: 50 });
+    expect(d.borderTexture).toEqual({ enabled: false, opacity: 10 });
+    expect(d.grain).toEqual({ enabled: false, intensity: 60, size: 'M' });
+  });
+
   it('enableAllFinishes liga os três acabamentos em um único passo de undo e preserva ajustes', () => {
     useEditor.getState().setPaper({ opacity: 65, enabled: false });
     idle();

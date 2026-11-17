@@ -1,6 +1,61 @@
 # Documento de Requisitos: Carrossel de Posts para Instagram
 
-> **Auditoria de implementação — 12/11/2026 (prevalece sobre todo o histórico abaixo).**
+> **Release v2.0.0 — Leva 5 (17/11/2026). PREVALECE SOBRE TODO O HISTÓRICO ABAIXO,
+> INCLUSIVE AS AUDITORIAS DE 12/11/2026.** `AGENTS.md` é a fonte de verdade; em especial a
+> §2.13 e as novas §§2.20–2.22. O texto histórico abaixo permanece só como registro.
+>
+> **Verificação:** `typecheck` ✅ · Vitest **250/28 arquivos** · build ✅ · Playwright
+> **109 passed / 3 skipped** (112 execuções desktop + mobile). Números de 12/11 superados.
+>
+> **Sincronização e identidade do slide.** O subscriber de `main.tsx` foi substituído por
+> **`installEditorCarouselSync()` em `src/store/syncEngine.ts`**, com
+> `isApplyingState()`/`withApplyingState()` para evitar cascata de subscribers. A posse da
+> carga é **`editorLoadedSlideId`** (`getEditorLoadedSlideId()`), gravada por
+> `primeEditorForSlide()` antes dos subscribers; `CarouselState.activeSlideId` é a segunda
+> coluna dessa identidade, e `updateActiveSlide()` descarta gravações quando divergem ou
+> quando há sincronização em andamento. `activeEditorSlideId()` é export morto. A
+> identidade do slide **nunca** é o índice. `reorderSlides` continua estritamente posicional
+> (a única limpeza é `pruneOrphanCrossoverCopies`).
+>
+> **Correção normativa ao contrato de crossover:** o lado da cópia vem da **posse
+> declarada** (`crossFrom` = id da slide anterior ou seguinte), **nunca do `x` da cópia**.
+> A frase histórica "`x <= postW / 2` aponta à anterior" está revogada — ela descartava em
+> silêncio uma cópia larga arrastada para dentro da página. Estão vigentes as regras (a)–(g)
+> de `AGENTS.md` §2.13, incluindo handoff para a vizinha quando a arte inteira sai da folha
+> e a proteção da logo própria.
+>
+> **Miniaturas e tira.** `SlidePreview` usa `RENDER_WIDTH = 160` (era 240), continua vivo,
+> somente leitura e `React.memo` — sem `PreviewImage`, `useSlideThumb`, captura,
+> `toDataURL`, cache ou debounce. `SlideTray` não reserva mais `min-height: 120px`: layout
+> de uma linha, card `+` de borda tracejada **no fim** (`Novo slide vazio`, único caminho),
+> ações `Duplicar slide atual`/`Remover slide` à direita, overlay de carregamento com
+> `role="status"`, e foco na miniatura ativa após criar/duplicar. Chevrons "Slide
+> anterior"/"Próximo slide" e o contador da tira **não existem**; o selo `Slide X de Y` fica
+> só junto à folha.
+>
+> **Reordenação por teclado (WCAG 2.5.7).** Além do DnD com MIME
+> `application/x-cuscuz-slide-index`, o `SlideThumb` expõe **`Mover slide N para a
+> esquerda`/`…para a direita`** (desabilitados nas extremidades, `data-no-drag`) e o botão
+> da miniatura aceita **Alt+Setas**. A animação GSAP tem `LANDING_SAFETY_MS = 1200`,
+> `resetMotionArtifacts()`, física a partir do ponteiro e setters `scaleX`/`scaleY`.
+>
+> **Textura e persistência.** `CarouselDraftBody` agora contém **`applyFinishToAll`**
+> (padrão `true`), persistido e aplicado no boot: quando ligado, o `finish` do slide ativo
+> é copiado para todos. O toggle "Aplicar em todos os slides" tem `aria-pressed`. A ação
+> "Ativar/Desativar todas as texturas" usa os nomes completos. O histórico de undo é o
+> `temporal` único do `editorStore`, limpo na troca de slide — **não** 50 entradas por
+> slide. A exportação continua com o dropdown `Exportação` (`Somente este slide` /
+> `Todos os slides`); `exportCarousel()` recebe `activateSlide` por injeção e fazer
+> `flushTextEditing()` + `flushDraft()` antes de trocar de slide é pré-requisito.
+>
+> **Integridade de rascunho duplicado.** `duplicateDraftRecord()` remapeia `crossFrom`
+> para os novos ids de slide e roda `normalizeCrossoverOwnership()`; `addSlide()` limpa
+> crossover residual à direita do antigo último slide e herda o `finish` ativo quando
+> `applyFinishToAll` está ligado. Limite: **"Máximo de 10 slides atingido!"**. Cobertura:
+> `Bug #01` (novo slide vazio no último slide de rascunho duplicado) em
+> `e2e/regressoes.spec.ts`.
+
+> **Auditoria de implementação — 12/11/2026 (prevalece sobre todo o histórico abaixo, exceto pelo bloco da Leva 5 acima).**
 > Esta é a especificação normativa do carrossel que está em produção. Ela substitui
 > os trechos antigos que descrevem `ModeSelector`, persistência por `localStorage`,
 > cache/captura de miniaturas ou crossover sem dono explícito.
@@ -26,7 +81,8 @@
 >   vizinha é uma cópia com o mesmo id, `crossover: true` e
 >   `crossFrom: <id do slide dono>`. Somente o dono gera, atualiza ou remove
 >   cópias. A cópia espelha edição apenas para o dono declarado na vizinha do lado
->   correto (`x <= postW / 2` aponta à anterior; à direita, à seguinte).
+>   correto (`crossFrom` aponta ao dono na vizinha; **o `x` da cópia não decide o lado** —
+>   trecho revogado na Leva 5, ver bloco do topo e `AGENTS.md` §2.13(b)).
 > - Excluir uma cópia exclui a arte dona e suas cópias, mas jamais um elemento real
 >   homônimo de outra página. Uma cópia legítima arrastada para dentro torna-se
 >   arte da página atual; uma cópia que não existia no `prevActiveDoc` é inválida
@@ -95,7 +151,8 @@
 > - A `SlideTray` é importada **estaticamente** (sem `React.lazy`), tem altura
 >   reservada e nasce com botões **desativados + loading** (`trayReady`), liberados
 >   pela miniatura do slide ativo ou por timeout de 1,5 s (Leva 1).
-> - Miniaturas usam `PreviewImage` com spinner temático; sem `alt` cru nem "Vazio" piscando.
+> - Miniaturas usam `SlidePreview` vivo em Konva (`RENDER_WIDTH = 160`), **não** `PreviewImage`
+>   — trecho histórico da Revisão 10/11, revogado na Leva 5; ver bloco do topo.
 > - `finish` é por slide; `enableAllFinishes()` (Leva 2) afeta somente o slide ativo
 >   e é sincronizado pelo subscriber de `main.tsx`.
 >
@@ -278,7 +335,7 @@ O modo **Post único** existente não sofre nenhuma alteração.
 
 3. THE Editor de Slide SHALL aplicar todas as regras existentes de forma independente por slide: limite de 5 imagens por slide (`IMAGE_MAX_COUNT`), regra `Texto ≤ Título`, limites de fonte por estilo (`FONT_SIZE_MIN = 16`, `BODY_FONT_SIZE_MAX = 320`, `HEADING_FONT_SIZE_MAX = 4000`) e restrições de logo única por slide.
 
-4. WHILE o Modo Carrossel está ativo, THE App SHALL manter o histórico de undo/redo (zundo) vinculado ao Slide Ativo, com limite de 50 entradas por slide.
+4. WHILE o Modo Carrossel está ativo, THE App SHALL manter o histórico de undo/redo (zundo) vinculado ao Slide Ativo, com limite de 50 entradas por slide. **[REVOGADO — o código usa o `temporal` único do `editorStore`, limpo na troca de slide; ver bloco da Leva 5 no topo.]**
 
 5. WHEN a usuária troca o Slide Ativo, THE App SHALL congelar o histórico de undo/redo do slide que está sendo deixado e carregar o histórico do novo Slide Ativo.
 
@@ -440,4 +497,4 @@ O modo **Post único** existente não sofre nenhuma alteração.
 5. WHILE o Modo Carrossel está ativo, THE App SHALL ocultar a seção "Formato do post" no Passo 1 e mostrar a descrição "O formato foi definido na criação do carrossel."; o Header continua exibindo o formato via `FormatGlyph` + `POST_FORMATS`.
 6. THE App SHALL aplicar o espelhamento do fundo pela `BackgroundMirrorToolbar` do dock, inclusive no carrossel, sem o card "Opções do Fundo" no painel.
 7. THE App SHALL aplicar "Ativar todas"/"Desativar todas" e as prévias pelo botão `Prévia da textura` por slide: ambas as ações em lote preservam parâmetros, alteram somente o `finish` do Slide Ativo e o subscriber de `main.tsx` o sincroniza com `updateActiveSlide`.
-8. THE App SHALL manter o selo "Slide X de Y" junto à folha (`role="status"`, `aria-live="polite"`) somado ao contador da tira, ambos com o mesmo texto.
+8. THE App SHALL manter o selo "Slide X de Y" **apenas** junto à folha (`slide-badge`, `role="status"`). **[REVOGADO o "contador da tira" — removido; ver bloco da Leva 5 no topo.]**

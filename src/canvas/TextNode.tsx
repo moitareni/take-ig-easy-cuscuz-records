@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { Group, Image as KonvaImage, Rect, Text as KonvaText } from 'react-konva';
 import type Konva from 'konva';
 import { manifest } from '../assets';
-import { BORDERS, BRAND_EFFECT, COLORS } from '../brand/brand';
+import { BORDERS, BRAND_EFFECT, COLORS, getBrandEffectStrokeColor } from '../brand/brand';
 import { measureTextLayout } from '../lib/textLayout';
 import { useFontsReady } from '../lib/useFontsReady';
 import { useImage } from '../lib/useImage';
@@ -13,16 +13,16 @@ export interface TextNodeProps {
   isSelected: boolean;
   /** Quando true, esconde as camadas de texto (o overlay in-place assume). */
   isEditing?: boolean;
-  /** Recebe o evento do Konva: Ctrl/Cmd/Shift soma/remove da seleção. */
-  onSelect: (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => void;
-  onDoubleClick: (e?: Konva.KonvaEventObject<unknown>) => void;
-  onChange: (patch: Partial<TextEl>) => void;
-  onApplyTextSize: (requested: number) => number;
+  /** Recebe o id e o evento do Konva: Ctrl/Cmd/Shift soma/remove da seleção. */
+  onSelect: (id: string, e: Konva.KonvaEventObject<Event>) => void;
+  onDoubleClick: (id: string, e?: Konva.KonvaEventObject<unknown>) => void;
+  onChange: (id: string, patch: Partial<TextEl>) => void;
+  onApplyTextSize: (id: string, requested: number) => number;
   onDragMoveSnap: (node: Konva.Node) => void;
   onDragEndSnap: () => void;
 }
 
-export const TextNode: React.FC<TextNodeProps> = ({
+const TextNodeImpl: React.FC<TextNodeProps> = ({
   element,
   isEditing = false,
   onSelect,
@@ -84,16 +84,16 @@ export const TextNode: React.FC<TextNodeProps> = ({
       scaleX={1}
       scaleY={1}
       draggable={!isEditing}
-      onClick={onSelect}
-      onTap={onSelect}
-      onDblClick={onDoubleClick}
-      onDblTap={onDoubleClick}
+      onClick={(e) => onSelect(element.id, e)}
+      onTap={(e) => onSelect(element.id, e)}
+      onDblClick={(e) => onDoubleClick(element.id, e)}
+      onDblTap={(e) => onDoubleClick(element.id, e)}
       onDragMove={(e) => {
         onDragMoveSnap(e.target);
       }}
       onDragEnd={(e) => {
         onDragEndSnap();
-        onChange({
+        onChange(element.id, {
           x: e.target.x(),
           y: e.target.y(),
         });
@@ -109,9 +109,9 @@ export const TextNode: React.FC<TextNodeProps> = ({
         node.scaleX(1);
         node.scaleY(1);
 
-        const appliedSize = onApplyTextSize(requestedSize);
+        const appliedSize = onApplyTextSize(element.id, requestedSize);
 
-        onChange({
+        onChange(element.id, {
           x: node.x(),
           y: node.y(),
           rotation: Math.round(node.rotation()),
@@ -152,8 +152,8 @@ export const TextNode: React.FC<TextNodeProps> = ({
       {element.brandEffect && (
         <KonvaText
           {...textProps}
-          fill={BRAND_EFFECT.strokeColor}
-          stroke={BRAND_EFFECT.strokeColor}
+          fill={getBrandEffectStrokeColor(element.brandEffectColor)}
+          stroke={getBrandEffectStrokeColor(element.brandEffectColor)}
           strokeWidth={BRAND_EFFECT.strokeOutside * 2} // 4px stroke -> 2px visíveis externamente
           shadowColor={BRAND_EFFECT.shadowColor}
           shadowOpacity={BRAND_EFFECT.shadowOpacity}
@@ -170,3 +170,5 @@ export const TextNode: React.FC<TextNodeProps> = ({
     </Group>
   );
 };
+
+export const TextNode = React.memo(TextNodeImpl);

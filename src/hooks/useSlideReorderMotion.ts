@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type React from 'react';
+import Konva from 'konva';
 import { POST_FORMATS, type PostFormat } from '../brand/brand';
 import { getElementHorizSpan, isCrossoverCopy } from '../lib/crossover';
 import { gsap, useGSAP } from '../lib/gsap';
@@ -13,6 +14,33 @@ import type { SlideData } from '../types';
 const DRAG_THRESHOLD_PX = 5;
 const EDGE_SCROLL_ZONE_PX = 48;
 const EDGE_SCROLL_MAX_SPEED = 9;
+/** Rede de segurança: se o commit não produzir um novo `slides`, nada fica preso. */
+const LANDING_SAFETY_MS = 1200;
+
+/**
+ * Durações do movimento (segundos). O arraste é uma micro-interação: tudo aqui
+ * é curto para a usuária não esperar a animação terminar para continuar.
+ */
+const MOTION = {
+  ghostIn: 0.16,
+  ghostOut: 0.14,
+  ghostMove: 0.24,
+  ghostPulse: 0.22,
+  slotOpen: 0.28,
+  slotReturn: 0.26,
+  landingMin: 0.24,
+  landingMax: 0.5,
+  thumbReveal: 0.09,
+} as const;
+
+/**
+ * `prefers-reduced-motion` não zera o movimento do arraste: ele encurta e tira
+ * a física (sem inércia, tilt ou overshoot). Reordenar é feedback essencial —
+ * a troca instantânea de posição era justamente o que deixava o DnD confuso.
+ */
+function calm(reduced: boolean, seconds: number) {
+  return reduced ? Math.min(seconds, 0.12) : seconds;
+}
 
 export interface ActiveSlideDrag {
   fromIndex: number;
@@ -42,7 +70,6 @@ interface FloatingPhysics {
   targetX: number;
   targetY: number;
   vx: number;
-  vy: number;
   smoothVx: number;
   rot: number;
   vRot: number;
@@ -141,6 +168,7 @@ export function useSlideReorderMotion({
   const sessionRef = useRef<DragSession | null>(null);
   const pendingLandingRef = useRef<PendingLanding | null>(null);
   const landingCleanupRef = useRef<(() => void) | null>(null);
+  const landingSafetyRef = useRef<number | null>(null);
   const reducedMotionRef = useRef(false);
   const suppressClickUntilRef = useRef(0);
 
@@ -169,6 +197,42 @@ export function useSlideReorderMotion({
     },
     { scope: listRef },
   );
+
+  /** Devolve a tira ao estado de repouso. Usado no pouso, no cancelamento e na rede de segurança. */
+  const resetMotionArtifacts = useCallback(() => {
+    const listEl = listRef.current;
+    const floatEl = floatingRef.current;
+    const ghostEl = ghostRef.current;
+
+    if (floatEl) {
+      gsap.killTweensOf(floatEl);
+      gsap.set(floatEl, { autoAlpha: 1 });
+    }
+    if (ghostEl) {
+      gsap.killTweensOf(ghostEl);
+      gsap.set(ghostEl, { autoAlpha: 0 });
+    }
+    if (listEl) {
+      const thumbs = Array.from(listEl.querySelectorAll<HTMLElement>('[data-slide-index]'));
+      gsap.killTweensOf(thumbs);
+      for (const el of thumbs) {
+        el.style.opacity = '';
+        el.style.pointerEvents = '';
+      }
+      gsap.set(thumbs, { clearProps: 'transform' });
+      listEl.removeAttribute('data-motion-active');
+    }
+    if (typeof document !== 'undefined') {
+      document.body.removeAttribute('data-slide-dragging');
+    }
+    if (landingSafetyRef.current !== null) {
+      clearTimeout(landingSafetyRef.current);
+      landingSafetyRef.current = null;
+    }
+    sessionRef.current = null;
+    landingCleanupRef.current = null;
+    setActiveDrag(null);
+  }, [floatingRef, ghostRef, listRef]);
 
   const computeTargetIndex = useCallback(
     (session: DragSession, pointerContentX: number): number => {
@@ -204,33 +268,35 @@ export function useSlideReorderMotion({
     [],
   );
 
-  // Move miniaturas irmãs abrindo espaço com ease fluido + desliza o ghost + atualiza selo
+  // Abre espaço nas irmãs (em onda), desliza o ghost e atualiza o selo
   const syncSlotLayoutAndGhost = useCallback(
     (session: DragSession, nextPreview: number) => {
       session.previewIndex = nextPreview;
       const reduced = reducedMotionRef.current;
+      const { fromIndex, slots, slotStep } = session;
 
-      const targetGhostX =
-        session.ghostBaseX + (nextPreview - session.fromIndex) * session.slotStep;
-
+      // Ghost: desliza para o slot de destino e dá um "clique" curto ao chegar
       if (ghostRef.current) {
-        if (reduced) {
-          gsap.set(ghostRef.current, { x: targetGhostX });
-        } else {
-          gsap.to(ghostRef.current, {
-            x: targetGhostX,
-            duration: 0.24,
-            ease: 'power3.out',
-            overwrite: 'auto',
-          });
+        gsap.to(ghostRef.current, {
+          x: session.ghostBaseX + (nextPreview - fromIndex) * slotStep,
+          duration: calm(reduced, MOTION.ghostMove),
+          ease: 'power3.out',
+          overwrite: 'auto',
+        });
+        if (!reduced) {
+          gsap.fromTo(
+            ghostRef.current,
+            { scale: 1.05 },
+            { scale: 1, duration: MOTION.ghostPulse, ease: 'power2.out', overwrite: 'auto' },
+          );
         }
       }
 
       if (badgeRef.current) {
         const nextText =
-          session.fromIndex !== nextPreview
-            ? `${session.fromIndex + 1} → ${nextPreview + 1}`
-            : String(session.fromIndex + 1);
+          fromIndex !== nextPreview
+            ? `${fromIndex + 1} → ${nextPreview + 1}`
+            : String(fromIndex + 1);
         if (badgeRef.current.textContent !== nextText) {
           badgeRef.current.textContent = nextText;
           if (!reduced) {
@@ -243,7 +309,8 @@ export function useSlideReorderMotion({
         }
       }
 
-      const { fromIndex, slots, slotStep } = session;
+      // Irmãs abrem (ou fecham) o espaço do slot com ease e chegada em onda:
+      // quanto mais longe da página arrastada, um fio mais longo no trajeto.
       for (const slot of slots) {
         if (slot.index === fromIndex) continue;
 
@@ -258,25 +325,22 @@ export function useSlideReorderMotion({
           shift = slotStep;
         }
 
-        if (shift !== slot.targetX) {
-          slot.targetX = shift;
-          if (reduced) {
-            gsap.set(slot.el, { x: shift });
-          } else {
-            gsap.to(slot.el, {
-              x: shift,
-              duration: 0.26,
-              ease: 'power3.out',
-              overwrite: 'auto',
-            });
-          }
-        }
+        if (shift === slot.targetX) continue;
+        slot.targetX = shift;
+
+        const distance = Math.abs(slot.index - fromIndex);
+        gsap.to(slot.el, {
+          x: shift,
+          duration: calm(reduced, MOTION.slotOpen + Math.min(0.06, (distance - 1) * 0.02)),
+          ease: reduced ? 'power2.out' : 'power3.out',
+          overwrite: 'auto',
+        });
       }
     },
     [badgeRef, ghostRef],
   );
 
-  // Setup inicial da camada flutuante, fade-in rápido do ghost e loop de inércia via gsap.ticker
+  // Setup da camada flutuante, fade-in rápido do ghost e loop de inércia via gsap.ticker
   useLayoutEffect(() => {
     const floatEl = floatingRef.current;
     const ghostEl = ghostRef.current;
@@ -289,13 +353,14 @@ export function useSlideReorderMotion({
     gsap.killTweensOf(floatEl);
     if (ghostEl) gsap.killTweensOf(ghostEl);
 
-    // Posição inicial exata (zero salto visual)
+    // Posição inicial exata (zero salto visual); o "pop" de pegar começa abaixo do tamanho final
     gsap.set(floatEl, {
       x: session.physics.x,
       y: session.physics.y,
-      scale: 1,
+      scale: session.physics.scale,
       rotation: 0,
       rotationY: 0,
+      autoAlpha: 1,
       transformPerspective: 800,
       force3D: true,
     });
@@ -307,17 +372,24 @@ export function useSlideReorderMotion({
         x: initialGhostX,
         y: session.ghostTop,
         autoAlpha: 0,
-        scale: reduced ? 1 : 0.9,
+        scale: reduced ? 1 : 0.92,
         force3D: true,
       });
-      // Fade in rápido e limpo do ghost tracejado
+      // Fade in rápido (opacidade + leve crescimento) do slot tracejado
       gsap.to(ghostEl, {
         autoAlpha: 1,
-        scale: 1,
-        duration: reduced ? 0.01 : 0.14,
+        duration: calm(reduced, MOTION.ghostIn),
         ease: 'power2.out',
         overwrite: 'auto',
       });
+      if (!reduced) {
+        gsap.to(ghostEl, {
+          scale: 1,
+          duration: MOTION.ghostIn + 0.14,
+          ease: 'back.out(2)',
+          overwrite: 'auto',
+        });
+      }
     }
 
     // Caso o primeiro move antes da montagem já tenha mudado de slot, sincroniza as irmãs
@@ -329,7 +401,26 @@ export function useSlideReorderMotion({
     const setFloatY = gsap.quickSetter(floatEl, 'y', 'px');
     const setFloatRot = gsap.quickSetter(floatEl, 'rotation', 'deg');
     const setFloatRotY = gsap.quickSetter(floatEl, 'rotationY', 'deg');
-    const setFloatScale = gsap.quickSetter(floatEl, 'scale');
+    // `quickSetter(el, 'scale')` não renderiza: o alias "scale" mapeia para
+    // "scaleX,scaleY" (composta) e o getSetter não resolve propriedade com
+    // vírgula — o valor nunca chegava ao transform. Setters individuais funcionam.
+    const setFloatScaleX = gsap.quickSetter(floatEl, 'scaleX');
+    const setFloatScaleY = gsap.quickSetter(floatEl, 'scaleY');
+
+    // Pinta o palco do portal sincronamente: o primeiro batchDraw do Konva é
+    // rAF-adiado e, se o commit cair depois da fase de rAF do frame, o card
+    // aparecia 1 frame com o canvas vazio (o "piscar" da arte na pegada).
+    const dragStage = Konva.stages.find((s) => floatEl.contains(s.container()));
+    if (dragStage) dragStage.draw();
+
+    // Esconde a miniatura real só agora, no mesmo bloco pré-paint em que o card
+    // flutuante já está posicionado: nunca há um frame em que ela sumiu e o
+    // card ainda não apareceu no lugar (a causa do "piscar" no início do arraste).
+    const fromSlot = session.slots[session.fromIndex];
+    if (fromSlot) {
+      fromSlot.el.style.opacity = '0';
+      fromSlot.el.style.pointerEvents = 'none';
+    }
 
     const tick = () => {
       const cur = sessionRef.current;
@@ -355,26 +446,31 @@ export function useSlideReorderMotion({
       if (reduced) {
         p.x = p.targetX;
         p.y = p.targetY;
+        p.rot = 0;
+        p.rotY = 0;
+        p.scale = 1;
         setFloatX(p.x);
         setFloatY(p.y);
+        setFloatRot(0);
+        setFloatRotY(0);
+        setFloatScaleX(1);
+        setFloatScaleY(1);
         return;
       }
 
-      // Inércia posicional suave do card flutuante (atraso orgânico sem perder precisão)
+      // Inércia posicional: o card persegue o ponteiro com peso, sem jamais "colar" nele
       const prevX = p.x;
-      const prevY = p.y;
-      const followFactor = 1 - Math.pow(1 - 0.32, dt);
+      const followFactor = 1 - Math.pow(0.72, dt);
       p.x += (p.targetX - p.x) * followFactor;
       p.y += (p.targetY - p.y) * followFactor;
 
       const instantVx = (p.x - prevX) / Math.max(dt, 0.25);
-      p.smoothVx += (instantVx - p.smoothVx) * (1 - Math.pow(1 - 0.45, dt));
+      p.smoothVx += (instantVx - p.smoothVx) * (1 - Math.pow(0.55, dt));
       p.vx = p.smoothVx;
-      p.vy = (p.y - prevY) / Math.max(dt, 0.25);
 
-      // Pêndulo de inércia angular proporcional à velocidade (amortecimento sem vibração)
-      const targetRot = gsap.utils.clamp(-12, 12, p.vx * 0.38);
-      const targetRotY = gsap.utils.clamp(-8, 8, p.vx * 0.24);
+      // Pêndulo de inércia angular proporcional à velocidade (sem vibração)
+      const targetRot = gsap.utils.clamp(-12, 12, p.vx * 0.42);
+      const targetRotY = gsap.utils.clamp(-7, 7, p.vx * 0.26);
       [p.rot, p.vRot] = stepSpring(p.rot, p.vRot, targetRot, 0.16, 0.58, dt);
       [p.rotY, p.vRotY] = stepSpring(p.rotY, p.vRotY, targetRotY, 0.16, 0.6, dt);
       [p.scale, p.vScale] = stepSpring(p.scale, p.vScale, p.targetScale, 0.22, 0.62, dt);
@@ -383,7 +479,8 @@ export function useSlideReorderMotion({
       setFloatY(p.y);
       setFloatRot(p.rot);
       setFloatRotY(p.rotY);
-      setFloatScale(p.scale);
+      setFloatScaleX(p.scale);
+      setFloatScaleY(p.scale);
     };
 
     gsap.ticker.add(tick);
@@ -404,59 +501,62 @@ export function useSlideReorderMotion({
       return;
     }
     pendingLandingRef.current = null;
-    if (!listEl) return;
-
-    const thumbEls = Array.from(
-      listEl.querySelectorAll<HTMLElement>('[data-slide-index]'),
-    );
-
-    gsap.killTweensOf(thumbEls);
-    for (const el of thumbEls) {
-      el.style.opacity = '';
-      el.style.pointerEvents = '';
+    if (landingSafetyRef.current !== null) {
+      clearTimeout(landingSafetyRef.current);
+      landingSafetyRef.current = null;
     }
-    gsap.set(thumbEls, { clearProps: 'transform' });
-
-    const landedEl = thumbEls.find(
-      (el) => Number(el.dataset.slideIndex) === landing.toIndex,
-    );
-    const floatEl = floatingRef.current;
-    const ghostEl = ghostRef.current;
-
-    if (reducedMotionRef.current || !floatEl || !landedEl) {
-      listEl.removeAttribute('data-motion-active');
-      setActiveDrag(null);
+    if (!listEl) {
+      resetMotionArtifacts();
       return;
     }
 
-    // Irmãs continuam exatamente da posição visual em que estavam (zero salto)
-    for (const el of thumbEls) {
+    const thumbs = Array.from(listEl.querySelectorAll<HTMLElement>('[data-slide-index]'));
+
+    gsap.killTweensOf(thumbs);
+    for (const el of thumbs) {
+      el.style.opacity = '';
+      el.style.pointerEvents = '';
+    }
+    gsap.set(thumbs, { clearProps: 'transform' });
+
+    const landedEl = thumbs.find((el) => Number(el.dataset.slideIndex) === landing.toIndex);
+    const floatEl = floatingRef.current;
+    const ghostEl = ghostRef.current;
+
+    if (!floatEl || !landedEl) {
+      resetMotionArtifacts();
+      return;
+    }
+
+    const reduced = reducedMotionRef.current;
+
+    // Irmãs continuam exatamente da posição visual em que estavam (zero salto) e
+    // terminam de deslizar junto com o card que chega.
+    for (const el of thumbs) {
       const idx = Number(el.dataset.slideIndex);
       if (idx === landing.toIndex) continue;
       const oldX = landing.siblingScreenX.get(el.dataset.slideId ?? '');
-      if (oldX !== undefined) {
-        const newRect = el.getBoundingClientRect();
-        const delta = oldX - newRect.left;
-        if (Math.abs(delta) > 0.5) {
-          gsap.fromTo(
-            el,
-            { x: delta },
-            {
-              x: 0,
-              duration: 0.24,
-              ease: 'power3.out',
-              clearProps: 'transform',
-              overwrite: 'auto',
-            },
-          );
-        }
+      if (oldX === undefined) continue;
+      const newRect = el.getBoundingClientRect();
+      const delta = oldX - newRect.left;
+      if (Math.abs(delta) > 0.5) {
+        gsap.fromTo(
+          el,
+          { x: delta },
+          {
+            x: 0,
+            duration: calm(reduced, MOTION.slotReturn),
+            ease: 'power3.out',
+            clearProps: 'transform',
+            overwrite: 'auto',
+          },
+        );
       }
     }
 
     const toRect = landedEl.getBoundingClientRect();
     if (toRect.width <= 0) {
-      listEl.removeAttribute('data-motion-active');
-      setActiveDrag(null);
+      resetMotionArtifacts();
       return;
     }
 
@@ -466,8 +566,8 @@ export function useSlideReorderMotion({
     if (ghostEl) {
       gsap.to(ghostEl, {
         autoAlpha: 0,
-        scale: 0.92,
-        duration: 0.13,
+        scale: reduced ? 1 : 0.92,
+        duration: calm(reduced, MOTION.ghostOut),
         ease: 'power2.in',
         overwrite: 'auto',
       });
@@ -478,7 +578,9 @@ export function useSlideReorderMotion({
     }
 
     const dist = Math.hypot(toRect.left - landing.startX, toRect.top - landing.startY);
-    const duration = gsap.utils.clamp(0.22, 0.44, 0.18 + dist / 1500);
+    const duration = reduced
+      ? 0.12
+      : gsap.utils.clamp(MOTION.landingMin, MOTION.landingMax, 0.2 + dist / 1400);
 
     let done = false;
     const finalize = () => {
@@ -487,14 +589,30 @@ export function useSlideReorderMotion({
       landingCleanupRef.current = null;
       gsap.killTweensOf(floatEl);
       if (ghostEl) gsap.killTweensOf(ghostEl);
-      gsap.killTweensOf(thumbEls);
-      gsap.set(thumbEls, { clearProps: 'transform' });
+      gsap.killTweensOf(thumbs);
+      gsap.set(thumbs, { clearProps: 'transform' });
       landedEl.style.opacity = '';
+      gsap.set(floatEl, { autoAlpha: 1 });
       listEl.removeAttribute('data-motion-active');
+      if (typeof document !== 'undefined') {
+        document.body.removeAttribute('data-slide-dragging');
+      }
       setActiveDrag(null);
     };
 
     landingCleanupRef.current = finalize;
+
+    // Troca invisível: o card real já ocupa os mesmos pixels, então o portal só esmaece
+    const revealRealThumb = () => {
+      landedEl.style.opacity = '1';
+      gsap.to(floatEl, {
+        autoAlpha: 0,
+        duration: MOTION.thumbReveal,
+        ease: 'power1.out',
+        overwrite: 'auto',
+        onComplete: finalize,
+      });
+    };
 
     gsap.fromTo(
       floatEl,
@@ -515,10 +633,10 @@ export function useSlideReorderMotion({
         duration,
         ease: 'power3.out',
         overwrite: true,
-        onComplete: finalize,
+        onComplete: revealRealThumb,
       },
     );
-  }, [slides, listRef, floatingRef, ghostRef, badgeRef]);
+  }, [slides, listRef, floatingRef, ghostRef, badgeRef, resetMotionArtifacts]);
 
   const updatePointerTarget = useCallback(
     (clientX: number, clientY: number) => {
@@ -587,8 +705,9 @@ export function useSlideReorderMotion({
       const fromIdx = session.fromIndex;
       const toIdx = session.previewIndex;
       const scrollDelta = listEl ? listEl.scrollLeft - session.initialScrollLeft : 0;
+      const reduced = reducedMotionRef.current;
 
-      // Caso 1: Troca de posição confirmada -> comita no store e mantém portal para o pouso ease-out
+      // Caso 1: troca de posição confirmada -> comita no store e mantém o portal para o pouso ease-out
       if (shouldCommit && fromIdx !== toIdx) {
         const siblingScreenX = new Map<string, number>();
         for (const slot of session.slots) {
@@ -610,11 +729,20 @@ export function useSlideReorderMotion({
         };
 
         sessionRef.current = null;
+
+        // Se o store não devolver um novo `slides`, o pouso nunca roda: libera tudo.
+        if (landingSafetyRef.current !== null) clearTimeout(landingSafetyRef.current);
+        landingSafetyRef.current = window.setTimeout(() => {
+          if (!pendingLandingRef.current) return;
+          pendingLandingRef.current = null;
+          resetMotionArtifacts();
+        }, LANDING_SAFETY_MS);
+
         onReorderRef.current(fromIdx, toIdx);
         return;
       }
 
-      // Caso 2: Cancelamento ou mesmo slot -> fade-out rápido do ghost e retorno ease-out ao lugar original
+      // Caso 2: cancelamento ou mesmo slot -> fade-out rápido do ghost e retorno ease-out
       const floatEl = floatingRef.current;
       const ghostEl = ghostRef.current;
       const origSlot = session.slots[fromIdx];
@@ -639,7 +767,7 @@ export function useSlideReorderMotion({
         setActiveDrag(null);
       };
 
-      if (reducedMotionRef.current || !floatEl || !origSlot) {
+      if (!floatEl || !origSlot) {
         cleanupCancel();
         return;
       }
@@ -649,8 +777,8 @@ export function useSlideReorderMotion({
       if (ghostEl) {
         gsap.to(ghostEl, {
           autoAlpha: 0,
-          scale: 0.92,
-          duration: 0.13,
+          scale: reduced ? 1 : 0.92,
+          duration: calm(reduced, MOTION.ghostOut),
           ease: 'power2.in',
           overwrite: 'auto',
         });
@@ -660,7 +788,7 @@ export function useSlideReorderMotion({
         if (slot.index === fromIdx) continue;
         gsap.to(slot.el, {
           x: 0,
-          duration: 0.24,
+          duration: calm(reduced, MOTION.slotReturn),
           ease: 'power3.out',
           overwrite: 'auto',
         });
@@ -669,7 +797,9 @@ export function useSlideReorderMotion({
       const targetX = origSlot.left - scrollDelta;
       const targetY = origSlot.top;
       const dist = Math.hypot(targetX - session.physics.x, targetY - session.physics.y);
-      const duration = gsap.utils.clamp(0.2, 0.42, 0.18 + dist / 1500);
+      const duration = reduced
+        ? 0.12
+        : gsap.utils.clamp(0.22, 0.46, 0.2 + dist / 1400);
 
       gsap.to(floatEl, {
         x: targetX,
@@ -683,11 +813,17 @@ export function useSlideReorderMotion({
         onComplete: cleanupCancel,
       });
     },
-    [floatingRef, ghostRef, listRef],
+    [listRef, floatingRef, ghostRef, resetMotionArtifacts],
   );
 
   const startSession = useCallback(
-    (index: number, startClientX: number, startClientY: number) => {
+    (
+      index: number,
+      downClientX: number,
+      downClientY: number,
+      currentClientX: number,
+      currentClientY: number,
+    ) => {
       if (disabledRef.current) return;
       // Se um pouso anterior ainda estiver terminando, conclui imediatamente antes de medir os slots
       landingCleanupRef.current?.();
@@ -729,8 +865,9 @@ export function useSlideReorderMotion({
       const fromSlot = slots[index];
       if (!fromSlot) return;
 
-      fromSlot.el.style.opacity = '0';
-      fromSlot.el.style.pointerEvents = 'none';
+      // A miniatura real NÃO é escondida aqui: ela some apenas no useLayoutEffect
+      // do card flutuante, no mesmo bloco pré-paint em que ele é posicionado —
+      // esconder antes do portal montar deixava um frame sem nenhum dos dois.
 
       const listRect = listEl.getBoundingClientRect();
       const slotStep =
@@ -742,13 +879,19 @@ export function useSlideReorderMotion({
         fromSlot.left - listRect.left - listEl.clientLeft + listEl.scrollLeft;
       const ghostTop = baseTop - listRect.top - listEl.clientTop + listEl.scrollTop;
 
-      const grabOffsetX = startClientX - fromSlot.left;
-      const grabOffsetY = startClientY - fromSlot.top;
+      const grabOffsetX = downClientX - fromSlot.left;
+      const grabOffsetY = downClientY - fromSlot.top;
+
+      // Onde o ponteiro está AGORA (no frame em que o arraste começa): a física
+      // nasce nessa posição, não no slot de origem — senão, em puxões rápidos,
+      // o card reaparecia no lugar antigo e deslizava até o cursor.
 
       const { hasCrossoverLeft, hasCrossoverRight } = detectCrossoverSides(
         slide,
         formatRef.current,
       );
+
+      const reduced = reducedMotionRef.current;
 
       sessionRef.current = {
         fromIndex: index,
@@ -763,25 +906,26 @@ export function useSlideReorderMotion({
         ghostTop,
         grabOffsetX,
         grabOffsetY,
-        lastClientX: startClientX,
-        lastClientY: startClientY,
+        lastClientX: currentClientX,
+        lastClientY: currentClientY,
         autoScrollSpeed: 0,
         finishing: false,
         physics: {
-          x: fromSlot.left,
-          y: fromSlot.top,
-          targetX: fromSlot.left,
-          targetY: fromSlot.top,
+          x: currentClientX - grabOffsetX,
+          y: currentClientY - grabOffsetY,
+          targetX: currentClientX - grabOffsetX,
+          targetY: currentClientY - grabOffsetY,
           vx: 0,
-          vy: 0,
           smoothVx: 0,
           rot: 0,
           vRot: 0,
           rotY: 0,
           vRotY: 0,
+          // Nasce no tamanho real: o "pop" de pegar sobe com spring até 1.06
+          // sem nunca encolher a arte abaixo do repouso (fonte de "piscar").
           scale: 1,
           vScale: 0,
-          targetScale: reducedMotionRef.current ? 1 : 1.08,
+          targetScale: reduced ? 1 : 1.06,
         },
       };
 
@@ -818,6 +962,10 @@ export function useSlideReorderMotion({
   useEffect(() => {
     return () => {
       landingCleanupRef.current?.();
+      if (landingSafetyRef.current !== null) {
+        clearTimeout(landingSafetyRef.current);
+        landingSafetyRef.current = null;
+      }
       if (typeof document !== 'undefined') {
         document.body.removeAttribute('data-slide-dragging');
       }
@@ -843,7 +991,9 @@ export function useSlideReorderMotion({
           const dist = Math.hypot(ev.clientX - startX, ev.clientY - startY);
           if (dist < DRAG_THRESHOLD_PX) return;
           started = true;
-          startSession(index, startX, startY);
+          // Coordenadas do ponteiro AGORA (não as do pointerdown): a sessão
+          // nasce presa ao cursor, com o offset de pegar vindo do pointerdown.
+          startSession(index, startX, startY, ev.clientX, ev.clientY);
         }
         updatePointerTarget(ev.clientX, ev.clientY);
       };

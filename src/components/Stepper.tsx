@@ -42,11 +42,16 @@ export const Stepper: React.FC = () => {
           <button
             key={step.id}
             type="button"
+            aria-current={isActive ? 'step' : undefined}
             className={`${styles.stepButton} ${isActive ? styles.active : ''} ${isPast ? styles.past : ''}`}
             onClick={() => handleClick(step.id)}
           >
             <span className={styles.label}>{step.label}</span>
-            {step.tag && <span className={styles.tag}>{step.tag}</span>}
+            {step.tag && (
+              <span className={styles.tag} aria-label="opcional">
+                {step.tag}
+              </span>
+            )}
           </button>
         );
       })}

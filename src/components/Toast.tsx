@@ -63,28 +63,54 @@ export const Toast: React.FC = () => {
       frame = requestAnimationFrame(tick);
     };
 
-    // Só um hover de verdade durante o esmaecimento resgata o balão.
-    const rescue = () => {
+    let hovered = false;
+    let focused = false;
+
+    // Só um hover/foco de verdade segura ou resgata o balão durante o esmaecimento.
+    const rescueFade = () => {
       if (!fading || currentOpacity() <= MIN_SAVE_OPACITY) return;
       fadeElapsed = 0;
       paused = true;
       el.style.opacity = '1';
     };
 
-    const handleLeave = () => {
-      paused = false;
+    const handlePointerRescue = () => {
+      hovered = true;
+      rescueFade();
     };
 
-    el.addEventListener('pointerenter', rescue);
-    el.addEventListener('pointermove', rescue);
-    el.addEventListener('pointerleave', handleLeave);
+    const handlePointerLeave = () => {
+      hovered = false;
+      if (!focused) paused = false;
+    };
+
+    const handleFocusIn = () => {
+      focused = true;
+      paused = true;
+      rescueFade();
+    };
+
+    const handleFocusOut = (e: FocusEvent) => {
+      const next = e.relatedTarget;
+      if (next instanceof Node && el.contains(next)) return;
+      focused = false;
+      if (!hovered) paused = false;
+    };
+
+    el.addEventListener('pointerenter', handlePointerRescue);
+    el.addEventListener('pointermove', handlePointerRescue);
+    el.addEventListener('pointerleave', handlePointerLeave);
+    el.addEventListener('focusin', handleFocusIn);
+    el.addEventListener('focusout', handleFocusOut);
     frame = requestAnimationFrame(tick);
 
     return () => {
       cancelAnimationFrame(frame);
-      el.removeEventListener('pointerenter', rescue);
-      el.removeEventListener('pointermove', rescue);
-      el.removeEventListener('pointerleave', handleLeave);
+      el.removeEventListener('pointerenter', handlePointerRescue);
+      el.removeEventListener('pointermove', handlePointerRescue);
+      el.removeEventListener('pointerleave', handlePointerLeave);
+      el.removeEventListener('focusin', handleFocusIn);
+      el.removeEventListener('focusout', handleFocusOut);
     };
   }, [toast, dismissToast]);
 

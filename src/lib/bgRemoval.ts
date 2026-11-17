@@ -133,10 +133,64 @@ let tfPromise: Promise<TfModule> | null = null;
 let tensorCtor: TfTensorCtor | null = null;
 let bgModel: unknown = null;
 let modelPromise: Promise<void> | null = null;
+/**
+ * Vira true quando o WebGPU falha (ao carregar OU ao rodar a inferência): daí em
+ * diante a sessão inteira usa wasm/fp32. `'gpu' in navigator` não garante nada —
+ * o Firefox expõe `navigator.gpu` mesmo quando o adaptador não existe ou quebra
+ * ao executar o grafo.
+ */
+let preferWasm = false;
 
-/** WebGPU disponível no navegador? Define o caminho rápido vs. wasm. */
+function isFirefoxBrowser(): boolean {
+  return typeof navigator !== 'undefined' && /\bfirefox\//i.test(navigator.userAgent ?? '');
+}
+
+/** WebGPU disponível (e ainda não descartado nesta sessão)? Define o caminho rápido vs. wasm. */
 export function bgUsesWebGPU(): boolean {
-  return typeof navigator !== 'undefined' && 'gpu' in navigator;
+  return !preferWasm && !isFirefoxBrowser() && typeof navigator !== 'undefined' && 'gpu' in navigator;
+}
+
+/**
+ * Confirma que o navegador entrega um adaptador WebGPU real com suporte a `shader-f16`
+ * antes de chamar `AutoModel.from_pretrained`, evitando requisições desnecessárias ao
+ * modelo fp16 e impedindo que falhas de WebGPU travem a fila interna do transformers.js.
+ */
+async function probeWebGPUFp16(): Promise<boolean> {
+  if (!bgUsesWebGPU()) return false;
+  try {
+    const gpu: unknown = Reflect.get(navigator, 'gpu');
+    if (!isRecord(gpu) || typeof gpu.requestAdapter !== 'function') {
+      preferWasm = true;
+      return false;
+    }
+    const adapter: unknown = await Reflect.apply(gpu.requestAdapter, gpu, []);
+    if (!isRecord(adapter) || !isRecord(adapter.features) || typeof adapter.features.has !== 'function') {
+      preferWasm = true;
+      return false;
+    }
+    const hasFp16 = Boolean(Reflect.apply(adapter.features.has, adapter.features, ['shader-f16']));
+    if (!hasFp16) preferWasm = true;
+    return hasFp16;
+  } catch {
+    preferWasm = true;
+    return false;
+  }
+}
+
+/** Libera a sessão atual do modelo para recarregá-la em outro backend. */
+async function resetBgModel(): Promise<void> {
+  const old = bgModel;
+  bgModel = null;
+  modelPromise = null;
+  fileProgress.clear();
+  if (typeof old !== 'function' && (typeof old !== 'object' || old === null)) return;
+  const dispose: unknown = Reflect.get(old, 'dispose');
+  if (typeof dispose !== 'function') return;
+  try {
+    await Reflect.apply(dispose, old, []);
+  } catch {
+    // Sessão já quebrada: segue o jogo, o wasm carrega do zero.
+  }
 }
 
 function loadTransformers(): Promise<TfModule> {
@@ -202,7 +256,7 @@ async function loadModel(): Promise<void> {
     const tf = await loadTransformers();
     if (!isTensorCtor(tf.Tensor)) throw new Error('bg-model');
     tensorCtor = tf.Tensor;
-    const webgpu = bgUsesWebGPU();
+    const webgpu = await probeWebGPUFp16();
     try {
       bgModel = await tf.AutoModel.from_pretrained(BG_MODEL_ID, {
         device: webgpu ? 'webgpu' : 'wasm',
@@ -211,8 +265,9 @@ async function loadModel(): Promise<void> {
       });
     } catch (err) {
       if (!webgpu) throw err;
-      // Adaptador sem storage buffers p/ o grafo: recarrega em wasm/fp32.
+      // Adaptador ausente/sem fp16/sem storage buffers p/ o grafo: recarrega em wasm/fp32.
       console.warn('[bgRemoval] WebGPU falhou, caindo para wasm:', err);
+      preferWasm = true;
       fileProgress.clear();
       setBgModelStatus({ phase: 'downloading', progress: 0, loadedBytes: 0, totalBytes: 0 });
       bgModel = await tf.AutoModel.from_pretrained(BG_MODEL_ID, {
@@ -270,30 +325,67 @@ function buildInputTensor(img: HTMLImageElement): TfTensor {
  * Roda a inferência e devolve o matte 512² já com sigmoid.
  * Procura o mapa de logits entre os nomes de saída conhecidos dos exports
  * BiRefNet (`logits` no studioludens, `output_image`/`output` em outros).
+ * Libera os tensores (memória wasm/GPU) ao terminar, com sucesso ou erro.
  */
 async function runInference(input: TfTensor): Promise<Float32Array> {
   if (!isModelInvoke(bgModel)) throw new Error('bg-inference');
   const plane = MODEL_INPUT * MODEL_INPUT;
-  const out = await bgModel({ input_image: input });
-  for (const key of ['logits', 'output_image', 'output']) {
-    const candidate: unknown = out[key];
-    if (!isTensorLike(candidate)) continue;
-    const data: unknown = candidate.data;
-    const matte = new Float32Array(plane);
-    if (data instanceof Float32Array && data.length === plane) {
-      matte.set(data);
-    } else if (data instanceof Uint16Array && data.length === plane) {
-      // Saída fp16 (WebGPU): half-float → float.
-      for (let i = 0; i < plane; i++) matte[i] = fromHalfFloat(data[i]);
-    } else if (isNumberIndexable(data) && data.length === plane) {
-      for (let i = 0; i < plane; i++) matte[i] = data[i];
-    } else {
-      continue;
+  let out: Record<string, unknown> | null = null;
+  try {
+    out = await bgModel({ input_image: input });
+    for (const key of ['logits', 'output_image', 'output']) {
+      const candidate: unknown = out[key];
+      if (!isTensorLike(candidate)) continue;
+      const data: unknown = candidate.data;
+      const matte = new Float32Array(plane);
+      if (data instanceof Float32Array && data.length === plane) {
+        matte.set(data);
+      } else if (data instanceof Uint16Array && data.length === plane) {
+        // Saída fp16 (WebGPU): half-float → float.
+        for (let i = 0; i < plane; i++) matte[i] = fromHalfFloat(data[i]);
+      } else if (isNumberIndexable(data) && data.length === plane) {
+        for (let i = 0; i < plane; i++) matte[i] = data[i];
+      } else {
+        continue;
+      }
+      sigmoidInPlace(matte);
+      // WebGPU quebrado pode "terminar" devolvendo lixo (NaN) em vez de lançar erro.
+      if (!matte.every(Number.isFinite)) throw new Error('bg-inference');
+      return matte;
     }
-    sigmoidInPlace(matte);
-    return matte;
+    throw new Error('bg-inference');
+  } finally {
+    disposeTensor(input);
+    if (out) for (const value of Object.values(out)) disposeTensor(value);
   }
-  throw new Error('bg-inference');
+}
+
+function disposeTensor(value: unknown): void {
+  if (!isTensorLike(value)) return;
+  try {
+    value.dispose();
+  } catch {
+    // Já liberado: nada a fazer.
+  }
+}
+
+/**
+ * Inferência com rede de segurança: se o WebGPU falhar na execução (o fallback
+ * do carregamento só cobre a criação da sessão), descarta a sessão, recarrega em
+ * wasm/fp32 e tenta de novo uma vez. Sem isso, "Tenta de novo" falhava sempre
+ * com a mesma sessão WebGPU quebrada.
+ */
+async function inferMatte(img: HTMLImageElement): Promise<Float32Array> {
+  try {
+    return await runInference(buildInputTensor(img));
+  } catch (err) {
+    if (!bgUsesWebGPU()) throw err;
+    console.warn('[bgRemoval] Inferência WebGPU falhou, refazendo em wasm:', err);
+    preferWasm = true;
+    await resetBgModel();
+    await ensureBgModel();
+    return runInference(buildInputTensor(img));
+  }
 }
 
 /** Matte 512² → alpha full-res via bilinear do próprio canvas. */
@@ -369,8 +461,7 @@ export async function removeBackground(
   await ensureBgModel();
 
   const img = await loadImage(url);
-  const input = buildInputTensor(img);
-  const matte = await runInference(input);
+  const matte = await inferMatte(img);
 
   // Pós-processo na resolução nativa do matte (parâmetros em px do modelo).
   let alpha = matte;

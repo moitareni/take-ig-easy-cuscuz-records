@@ -12,6 +12,7 @@ import {
   useCarousel,
 } from './carouselStore';
 import { defaultFinish, emptyDoc, redo, undo, useEditor } from './editorStore';
+import { installEditorCarouselSync } from './syncEngine';
 
 const makeTextEl = (id: string, text = 'CUSCUZ', crossover?: boolean): El => ({
   id,
@@ -546,6 +547,195 @@ describe('carouselStore', () => {
       expect(chosenSlide0!.doc.elements[0].id).toBe('el-from-1');
       expect(chosenSlide0!.doc.elements[0].x).toBe(100 + 1080);
       expect(chosenSlide0!.doc.elements[0].crossover).toBeUndefined();
+    });
+  });
+
+  describe('applyFinishToAll (textura em todos os slides)', () => {
+    let disposeSync: (() => void) | null = null;
+
+    beforeEach(() => {
+      disposeSync = installEditorCarouselSync();
+    });
+
+    afterEach(() => {
+      disposeSync?.();
+      disposeSync = null;
+    });
+
+    it('applyFinishToAll nasce ativo (true) por padrão no carrossel', () => {
+      useCarousel.getState().resetCarousel();
+      expect(useCarousel.getState().applyFinishToAll).toBe(true);
+    });
+
+    it('setApplyFinishToAll(true) copia o finish do slide ativo para todos os slides', () => {
+      useCarousel.getState().resetCarousel();
+      useCarousel.getState().setMode('carousel');
+      useCarousel.getState().setApplyFinishToAll(false);
+      useCarousel.getState().addSlide();
+      useCarousel.getState().setActiveSlide(0);
+
+      useEditor.getState().setPaper({ enabled: true, opacity: 70 });
+      useEditor.getState().setGrain({ enabled: true, intensity: 55, size: 'G' });
+      expect(useCarousel.getState().slides[1].finish.paper.enabled).toBe(false);
+
+      useCarousel.getState().setApplyFinishToAll(true);
+
+      const st = useCarousel.getState();
+      expect(st.applyFinishToAll).toBe(true);
+      expect(st.slides[0].finish).toEqual(useEditor.getState().finish);
+      expect(st.slides[1].finish).toEqual(useEditor.getState().finish);
+      expect(st.slides[1].finish).not.toBe(st.slides[0].finish);
+    });
+
+    it('com applyFinishToAll ativo, alterações, undo/redo e addSlide propagam o finish para todos os slides', () => {
+      useCarousel.getState().resetCarousel();
+      useCarousel.getState().setMode('carousel');
+      useCarousel.getState().addSlide();
+      useCarousel.getState().setActiveSlide(0);
+      useCarousel.getState().setApplyFinishToAll(true);
+
+      vi.setSystemTime(Date.now() + 1000);
+      useEditor.getState().setPaper({ enabled: true, opacity: 65 });
+      expect(useCarousel.getState().slides[1].finish.paper).toEqual({ enabled: true, opacity: 65 });
+
+      vi.setSystemTime(Date.now() + 1000);
+      useEditor.getState().enableAllFinishes();
+      for (const slide of useCarousel.getState().slides) {
+        expect(slide.finish.paper.enabled).toBe(true);
+        expect(slide.finish.borderTexture.enabled).toBe(true);
+        expect(slide.finish.grain.enabled).toBe(true);
+      }
+
+      useCarousel.getState().addSlide();
+      const slidesAfterAdd = useCarousel.getState().slides;
+      expect(slidesAfterAdd).toHaveLength(3);
+      expect(slidesAfterAdd[2].finish.paper.enabled).toBe(true);
+      expect(slidesAfterAdd[2].finish.borderTexture.enabled).toBe(true);
+      expect(slidesAfterAdd[2].finish.grain.enabled).toBe(true);
+
+      vi.setSystemTime(Date.now() + 1000);
+      useEditor.getState().disableAllFinishes();
+      for (const slide of useCarousel.getState().slides) {
+        expect(slide.finish.paper.enabled).toBe(false);
+        expect(slide.finish.borderTexture.enabled).toBe(false);
+        expect(slide.finish.grain.enabled).toBe(false);
+      }
+
+      vi.setSystemTime(Date.now() + 1000);
+      undo();
+      for (const slide of useCarousel.getState().slides) {
+        expect(slide.finish.paper.enabled).toBe(true);
+        expect(slide.finish.borderTexture.enabled).toBe(true);
+        expect(slide.finish.grain.enabled).toBe(true);
+      }
+
+      vi.setSystemTime(Date.now() + 1000);
+      redo();
+      for (const slide of useCarousel.getState().slides) {
+        expect(slide.finish.paper.enabled).toBe(false);
+        expect(slide.finish.borderTexture.enabled).toBe(false);
+        expect(slide.finish.grain.enabled).toBe(false);
+      }
+    });
+
+    it('setApplyFinishToAll(false) preserva as texturas já aplicadas nos outros slides e passa a editar apenas o slide ativo', () => {
+      useCarousel.getState().resetCarousel();
+      useCarousel.getState().setMode('carousel');
+      useCarousel.getState().addSlide();
+      useCarousel.getState().addSlide();
+      useCarousel.getState().setActiveSlide(1);
+      useCarousel.getState().setApplyFinishToAll(true);
+
+      vi.setSystemTime(Date.now() + 1000);
+      useEditor.getState().enableAllFinishes();
+      expect(useCarousel.getState().slides[0].finish.paper.enabled).toBe(true);
+      expect(useCarousel.getState().slides[1].finish.paper.enabled).toBe(true);
+      expect(useCarousel.getState().slides[2].finish.paper.enabled).toBe(true);
+
+      // Desliga "Aplicar em todos os slides": nenhum slide perde a textura
+      useCarousel.getState().setApplyFinishToAll(false);
+      const afterToggleOff = useCarousel.getState();
+      expect(afterToggleOff.applyFinishToAll).toBe(false);
+      expect(afterToggleOff.slides[0].finish.paper.enabled).toBe(true);
+      expect(afterToggleOff.slides[1].finish.paper.enabled).toBe(true);
+      expect(afterToggleOff.slides[2].finish.paper.enabled).toBe(true);
+
+      // Agora desativa as texturas no slide ativo (slide 1): só o slide 1 perde
+      vi.setSystemTime(Date.now() + 1000);
+      useEditor.getState().disableAllFinishes();
+      const afterDisableOne = useCarousel.getState();
+      expect(afterDisableOne.slides[0].finish.paper.enabled).toBe(true);
+      expect(afterDisableOne.slides[0].finish.borderTexture.enabled).toBe(true);
+      expect(afterDisableOne.slides[0].finish.grain.enabled).toBe(true);
+      expect(afterDisableOne.slides[1].finish.paper.enabled).toBe(false);
+      expect(afterDisableOne.slides[1].finish.borderTexture.enabled).toBe(false);
+      expect(afterDisableOne.slides[1].finish.grain.enabled).toBe(false);
+      expect(afterDisableOne.slides[2].finish.paper.enabled).toBe(true);
+      expect(afterDisableOne.slides[2].finish.borderTexture.enabled).toBe(true);
+      expect(afterDisableOne.slides[2].finish.grain.enabled).toBe(true);
+    });
+
+    it('fluxo completo: edições individuais, em lote com applyFinishToAll e desativação isolada após desligar', () => {
+      useCarousel.getState().resetCarousel();
+      useCarousel.getState().setMode('carousel');
+      useCarousel.getState().setApplyFinishToAll(false);
+      useCarousel.getState().addSlide();
+      useCarousel.getState().addSlide(); // 3 slides
+
+      // 1. Ativa textura em dois slides com applyFinishToAll desativado
+      useCarousel.getState().setActiveSlide(0);
+      vi.setSystemTime(Date.now() + 1000);
+      useEditor.getState().setPaper({ enabled: true, opacity: 50 });
+      useCarousel.getState().setActiveSlide(1);
+      vi.setSystemTime(Date.now() + 1000);
+      useEditor.getState().setPaper({ enabled: true, opacity: 60 });
+
+      expect(useCarousel.getState().slides[0].finish.paper).toEqual({ enabled: true, opacity: 50 });
+      expect(useCarousel.getState().slides[1].finish.paper).toEqual({ enabled: true, opacity: 60 });
+      expect(useCarousel.getState().slides[2].finish.paper.enabled).toBe(false);
+
+      // 2. Desativa textura de cada um com applyFinishToAll desativado
+      useCarousel.getState().setActiveSlide(0);
+      vi.setSystemTime(Date.now() + 1000);
+      useEditor.getState().setPaper({ enabled: false });
+      expect(useCarousel.getState().slides[0].finish.paper.enabled).toBe(false);
+      expect(useCarousel.getState().slides[1].finish.paper.enabled).toBe(true);
+
+      useCarousel.getState().setActiveSlide(1);
+      vi.setSystemTime(Date.now() + 1000);
+      useEditor.getState().setPaper({ enabled: false });
+      expect(useCarousel.getState().slides[1].finish.paper.enabled).toBe(false);
+
+      // 3. Ativa applyFinishToAll, ativa em um -> aplica em todos; desativa em um -> desativa em todos
+      useCarousel.getState().setActiveSlide(0);
+      useCarousel.getState().setApplyFinishToAll(true);
+      vi.setSystemTime(Date.now() + 1000);
+      useEditor.getState().enableAllFinishes();
+      for (const sl of useCarousel.getState().slides) {
+        expect(sl.finish.paper.enabled).toBe(true);
+        expect(sl.finish.borderTexture.enabled).toBe(true);
+        expect(sl.finish.grain.enabled).toBe(true);
+      }
+
+      vi.setSystemTime(Date.now() + 1000);
+      useEditor.getState().disableAllFinishes();
+      for (const sl of useCarousel.getState().slides) {
+        expect(sl.finish.paper.enabled).toBe(false);
+        expect(sl.finish.borderTexture.enabled).toBe(false);
+        expect(sl.finish.grain.enabled).toBe(false);
+      }
+
+      // 4. Reativa em todos e depois desliga applyFinishToAll para remover só do slide 2
+      vi.setSystemTime(Date.now() + 1000);
+      useEditor.getState().enableAllFinishes();
+      useCarousel.getState().setApplyFinishToAll(false);
+
+      useCarousel.getState().setActiveSlide(2);
+      vi.setSystemTime(Date.now() + 1000);
+      useEditor.getState().setPaper({ enabled: false });
+      expect(useCarousel.getState().slides[0].finish.paper.enabled).toBe(true);
+      expect(useCarousel.getState().slides[1].finish.paper.enabled).toBe(true);
+      expect(useCarousel.getState().slides[2].finish.paper.enabled).toBe(false);
     });
   });
 });

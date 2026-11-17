@@ -1,8 +1,7 @@
 import { CAROUSEL_MAX_SLIDES, type PostFormat } from '../../brand/brand';
 import { extractSingleSlideData, normalizeCrossoverOwnership } from '../crossover';
+import { defaultSlide, sanitize, sanitizeFinish, sanitizeFormat, sanitizeSlide } from '../sanitize';
 import type { Doc, FinishState, SlideData } from '../../types';
-import { defaultSlide, sanitizeFormat, sanitizeSlide } from '../../store/carouselStore';
-import { sanitize, sanitizeFinish } from '../../store/editorStore';
 import { dedupeSlideElementIds } from '../slideIds';
 import { defaultDraftTitle } from './content';
 import {
@@ -12,6 +11,7 @@ import {
   META_STORE,
   getAllFromStore,
   getFromStore,
+  getOpenEditorDbSync,
   openEditorDb,
   putInStore,
   requestAsPromise,
@@ -86,6 +86,7 @@ interface RawBody {
   finish?: FinishState;
   slides?: unknown;
   activeSlideIndex?: unknown;
+  applyFinishToAll?: unknown;
 }
 
 export function sanitizeDraftBody(raw: unknown, fallbackFormat: PostFormat = '3:4'): DraftBody | null {
@@ -110,6 +111,7 @@ export function sanitizeDraftBody(raw: unknown, fallbackFormat: PostFormat = '3:
       slides,
       activeSlideIndex,
       format,
+      ...(r.applyFinishToAll === false ? { applyFinishToAll: false } : { applyFinishToAll: true }),
       schemaVersion: DRAFT_SCHEMA_VERSION,
     };
   }
@@ -215,6 +217,27 @@ export async function saveDraftRecord(meta: DraftMeta, body: DraftBody): Promise
   };
   const safeBody: DraftBody = { ...body, id: safeMeta.id, schemaVersion: DRAFT_SCHEMA_VERSION };
 
+  const syncDb = getOpenEditorDbSync();
+  if (syncDb) {
+    try {
+      const tx = syncDb.transaction([DRAFTS_STORE, DOCUMENTS_STORE], 'readwrite');
+      tx.objectStore(DRAFTS_STORE).put(safeMeta);
+      tx.objectStore(DOCUMENTS_STORE).put(safeBody);
+      await transactionDone(tx);
+      return;
+    } catch (error) {
+      if (
+        !(
+          typeof DOMException !== 'undefined' &&
+          error instanceof DOMException &&
+          error.name === 'InvalidStateError'
+        )
+      ) {
+        throw error;
+      }
+    }
+  }
+
   const db = await openEditorDb();
   const tx = db.transaction([DRAFTS_STORE, DOCUMENTS_STORE], 'readwrite');
   tx.objectStore(DRAFTS_STORE).put(safeMeta);
@@ -277,14 +300,44 @@ export async function getAllDraftBodies(): Promise<DraftBody[]> {
     .filter((body): body is DraftBody => body !== null);
 }
 
+async function cleanupOrphanDraftIds(ids: string[]): Promise<void> {
+  if (ids.length === 0) return;
+  try {
+    const db = await openEditorDb();
+    const tx = db.transaction([DRAFTS_STORE, DOCUMENTS_STORE, COVERS_STORE], 'readwrite');
+    const drafts = tx.objectStore(DRAFTS_STORE);
+    const docs = tx.objectStore(DOCUMENTS_STORE);
+    const covers = tx.objectStore(COVERS_STORE);
+    for (const id of ids) {
+      drafts.delete(id);
+      docs.delete(id);
+      covers.delete(id);
+    }
+    await transactionDone(tx);
+  } catch {
+    // Limpeza de órfãos é best-effort: falhas não bloqueiam a carga dos rascunhos íntegros.
+  }
+}
+
 export async function getAllDraftRecords(): Promise<DraftRecord[]> {
   const [metas, bodies] = await Promise.all([listDraftMetas(), getAllDraftBodies()]);
+  const metaIds = new Set(metas.map((meta) => meta.id));
   const byId = new Map(bodies.map((body) => [body.id, body]));
+  const orphanIds: string[] = [];
   const records: DraftRecord[] = [];
   for (const meta of metas) {
     const body = byId.get(meta.id);
-    if (!body) continue;
+    if (!body) {
+      orphanIds.push(meta.id);
+      continue;
+    }
     records.push({ meta, body: alignBodyToMeta(meta, body) });
+  }
+  for (const body of bodies) {
+    if (!metaIds.has(body.id)) orphanIds.push(body.id);
+  }
+  if (orphanIds.length > 0) {
+    await cleanupOrphanDraftIds(orphanIds);
   }
   return records;
 }
@@ -314,13 +367,30 @@ export async function duplicateDraftRecord(record: DraftRecord, id: string): Pro
     };
     body = single;
   } else {
+    const clonedBody = cloneValue(record.body);
+    const slideIdMap = new Map<string, string>();
+    const clonedSlides = clonedBody.slides.map((slide, index) => {
+      const nextSlideId = `slide-${id}-${index}-${Math.random().toString(36).slice(2, 6)}`;
+      slideIdMap.set(slide.id, nextSlideId);
+      return {
+        ...slide,
+        id: nextSlideId,
+      };
+    });
+    // Remapeia a posse de crossover (`crossFrom`) para os novos ids de slide antes de normalizar.
+    const remappedSlides = clonedSlides.map((slide) => ({
+      ...slide,
+      doc: {
+        ...slide.doc,
+        elements: slide.doc.elements.map((el) =>
+          el.crossFrom ? { ...el, crossFrom: slideIdMap.get(el.crossFrom) ?? el.crossFrom } : el,
+        ),
+      },
+    }));
     const carousel: CarouselDraftBody = {
-      ...cloneValue(record.body),
+      ...clonedBody,
       id,
-      slides: record.body.slides.map((slide, index) => ({
-        ...cloneValue(slide),
-        id: `slide-${id}-${index}-${Math.random().toString(36).slice(2, 6)}`,
-      })),
+      slides: normalizeCrossoverOwnership(remappedSlides, clonedBody.format),
     };
     body = carousel;
   }

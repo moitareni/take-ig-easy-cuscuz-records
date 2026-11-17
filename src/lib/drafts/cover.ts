@@ -8,6 +8,7 @@ type CoverCaptureProvider = () => Promise<Blob | null>;
 let provider: CoverCaptureProvider | null = null;
 let inFlight: Promise<Blob | null> | null = null;
 let lastCaptureAt = 0;
+let lastCapturedDraftId: string | null = null;
 
 export function setCoverCaptureProvider(next: CoverCaptureProvider | null): void {
   provider = next;
@@ -15,12 +16,12 @@ export function setCoverCaptureProvider(next: CoverCaptureProvider | null): void
 
 /**
  * A capa é cosmética: a captura pode falhar sem afetar o rascunho. Para não
- * pesar durante a digitação, no máximo uma captura a cada 5 segundos; ao sair
- * do editor pedimos `force` e ela sempre acontece (antes do canvas desmontar).
+ * pesar durante a digitação, no máximo uma captura a cada 5 segundos por rascunho;
+ * ao sair do editor ou no fechamento de sessão pedimos `force` e ela sempre acontece.
  */
 export async function captureAndSaveCover(draftId: string, force = false): Promise<boolean> {
   if (!provider) return false;
-  if (!force && Date.now() - lastCaptureAt < 5000) return false;
+  if (!force && lastCapturedDraftId === draftId && Date.now() - lastCaptureAt < 5000) return false;
 
   if (!inFlight) {
     inFlight = provider();
@@ -33,6 +34,7 @@ export async function captureAndSaveCover(draftId: string, force = false): Promi
     const blob = await inFlight;
     if (!blob || blob.size === 0) return false;
     lastCaptureAt = Date.now();
+    lastCapturedDraftId = draftId;
     await putDraftCover(draftId, blob);
     return true;
   } catch {

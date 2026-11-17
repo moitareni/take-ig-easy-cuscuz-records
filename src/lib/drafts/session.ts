@@ -1,14 +1,11 @@
 import type { PostFormat } from '../../brand/brand';
-import {
-  defaultSlide,
-  loadSlideIntoEditor,
-  sanitizeFormat,
-  useCarousel,
-} from '../../store/carouselStore';
-import { defaultFinish, emptyDoc, useEditor } from '../../store/editorStore';
+import { getEditorLoadedSlideId, loadSlideIntoEditor, useCarousel } from '../../store/carouselStore';
+import { flushTextEditing, resetEditorFor, useEditor } from '../../store/editorStore';
 import { useDraftsStore } from '../../store/draftsStore';
+import { isApplyingState, withApplyingState } from '../../store/syncEngine';
 import { extractSingleSlideData, reconcileAllCrossovers } from '../crossover';
 import { collectDocImageIds, reconcileAllSlides } from '../carouselGC';
+import { defaultFinish, defaultSlide, emptyDoc, sanitizeFormat } from '../sanitize';
 import { collectGarbageImages, getStoredImageIds, loadUserImages } from '../userImages';
 import { captureAndSaveCover, ensureCover } from './cover';
 import { describeStorageError } from './db';
@@ -22,6 +19,8 @@ import {
   listDraftMetas,
   putDraftCover,
   readDraftRecord,
+  sanitizeDraftBody,
+  sanitizeDraftMeta,
   saveDraftRecord,
   updateDraftMeta,
 } from './repository';
@@ -34,22 +33,111 @@ import {
   type DraftMeta,
 } from './types';
 
-const SAVE_DEBOUNCE_MS = 450;
+const SAVE_DEBOUNCE_MS = 200;
+const COVER_REFRESH_DEBOUNCE_MS = 1200;
 const CHANNEL_NAME = 'cuscuz-insta-kit:drafts';
+const SESSION_GLOBAL_KEY = '__cuscuzDraftSession';
+const PENDING_CHECKPOINT_KEY = 'cuscuz-insta-kit:pending-checkpoint';
 
-let activeId: string | null = null;
-let activeMeta: DraftMeta | null = null;
-let isNewDraft = false;
-let dirty = false;
-let applyingState = false;
-let installed = false;
-let saveTimer: ReturnType<typeof setTimeout> | null = null;
-let saveChain: Promise<void> = Promise.resolve();
-let channel: BroadcastChannel | null = null;
-let releaseLockFn: (() => void) | null = null;
-let lockedDraftId: string | null = null;
+interface DraftSessionState {
+  activeId: string | null;
+  activeMeta: DraftMeta | null;
+  isNewDraft: boolean;
+  dirty: boolean;
+  coverDirty: boolean;
+  changeRevision: number;
+  latestSavedRevision: number;
+  activeSaves: number;
+  installed: boolean;
+  saveTimer: ReturnType<typeof setTimeout> | null;
+  coverTimer: ReturnType<typeof setTimeout> | null;
+  saveChain: Promise<void>;
+  savingInFlight: boolean;
+  channel: BroadcastChannel | null;
+  releaseLockFn: (() => void) | null;
+  lockedDraftId: string | null;
+  disposeSubscribers: (() => void) | null;
+}
+
+function getSession(): DraftSessionState {
+  const g = globalThis as unknown as Record<string, DraftSessionState | undefined>;
+  if (!g[SESSION_GLOBAL_KEY]) {
+    g[SESSION_GLOBAL_KEY] = {
+      activeId: null,
+      activeMeta: null,
+      isNewDraft: false,
+      dirty: false,
+      coverDirty: false,
+      changeRevision: 0,
+      latestSavedRevision: 0,
+      activeSaves: 0,
+      installed: false,
+      saveTimer: null,
+      coverTimer: null,
+      saveChain: Promise.resolve(),
+      savingInFlight: false,
+      channel: null,
+      releaseLockFn: null,
+      lockedDraftId: null,
+      disposeSubscribers: null,
+    };
+  }
+  return g[SESSION_GLOBAL_KEY];
+}
+
+const session = getSession();
 
 // ------------------------------------------------------------------ helpers
+
+function ensureActiveSessionRecovered(): void {
+  if (session.activeId && session.activeMeta) return;
+  const draftsState = useDraftsStore.getState();
+  if (draftsState.screen !== 'editor' || !draftsState.activeDraftId) return;
+
+  const id = draftsState.activeDraftId;
+  const existingMeta = draftsState.drafts.find((d) => d.id === id) ?? null;
+  const carousel = useCarousel.getState();
+  const kind: DraftKind =
+    draftsState.activeKind ?? (carousel.mode === 'carousel' ? 'carousel' : 'single');
+  const format =
+    kind === 'carousel'
+      ? normalizeFormat(carousel.format)
+      : normalizeFormat(useEditor.getState().doc.format);
+  const now = Date.now();
+
+  session.activeId = id;
+  session.activeMeta = existingMeta ?? {
+    id,
+    title: draftsState.activeTitle || defaultDraftTitle(kind, new Date(now)),
+    titleSource: 'user',
+    kind,
+    format,
+    slideCount: kind === 'carousel' ? carousel.slides.length : 1,
+    createdAt: now,
+    updatedAt: now,
+    lastOpenedAt: now,
+    schemaVersion: DRAFT_SCHEMA_VERSION,
+  };
+  session.isNewDraft = false;
+}
+
+function syncEditorToCarouselIfNeeded(): void {
+  if (isApplyingState()) return;
+  const carousel = useCarousel.getState();
+  if (carousel.mode !== 'carousel' || carousel.isExporting) return;
+  const editor = useEditor.getState();
+  const byId = carousel.activeSlideId
+    ? carousel.slides.findIndex((slide) => slide.id === carousel.activeSlideId)
+    : -1;
+  const index = byId >= 0 ? byId : carousel.activeSlideIndex;
+  const activeSlide = carousel.slides[index];
+  if (!activeSlide) return;
+  const loadedId = getEditorLoadedSlideId();
+  if (loadedId && activeSlide.id !== loadedId) return;
+  if (activeSlide.doc !== editor.doc || activeSlide.finish !== editor.finish) {
+    carousel.updateActiveSlide(editor.doc, editor.finish);
+  }
+}
 
 function currentKind(): DraftKind {
   return useCarousel.getState().mode === 'carousel' ? 'carousel' : 'single';
@@ -60,6 +148,7 @@ function normalizeFormat(format: PostFormat | undefined): PostFormat {
 }
 
 function buildBody(id: string): DraftBody {
+  syncEditorToCarouselIfNeeded();
   const carousel = useCarousel.getState();
   if (carousel.mode === 'carousel') {
     return {
@@ -68,6 +157,7 @@ function buildBody(id: string): DraftBody {
       slides: carousel.slides,
       activeSlideIndex: carousel.activeSlideIndex,
       format: carousel.format,
+      ...(carousel.applyFinishToAll === false ? { applyFinishToAll: false } : { applyFinishToAll: true }),
       schemaVersion: DRAFT_SCHEMA_VERSION,
     };
   }
@@ -137,17 +227,11 @@ function applyBodyToStores(body: DraftBody): void {
       mode: 'single',
       slides: [slide],
       activeSlideIndex: 0,
+      activeSlideId: slide.id,
       format,
+      applyFinishToAll: true,
     });
-    useEditor.setState({
-      doc: slide.doc,
-      finish: slide.finish,
-      step: 0,
-      selectedIds: [],
-      selectedId: null,
-      editingId: null,
-    });
-    useEditor.temporal.getState().clear();
+    resetEditorFor(slide.doc, slide.finish);
     return;
   }
 
@@ -156,14 +240,30 @@ function applyBodyToStores(body: DraftBody): void {
   // como espelho (que não é clicável). Assim a página vizinha já abre
   // interativa, mesmo se o rascunho salvo ficou sem alguma cópia.
   const slides = reconcileAllCrossovers(body.slides, format);
+  const safeIndex = Math.max(0, Math.min(body.activeSlideIndex, Math.max(0, slides.length - 1)));
+  const active = slides[safeIndex] ?? slides[0];
+  const applyFinishToAll = body.applyFinishToAll !== false;
+  const syncedSlides =
+    applyFinishToAll && active
+      ? slides.map((sl) => ({
+          ...sl,
+          finish: {
+            paper: { ...active.finish.paper },
+            grain: { ...active.finish.grain },
+            borderTexture: { ...active.finish.borderTexture },
+          },
+        }))
+      : slides;
+  const syncedActive = syncedSlides[safeIndex] ?? syncedSlides[0];
   useCarousel.setState({
     mode: 'carousel',
-    slides,
-    activeSlideIndex: body.activeSlideIndex,
+    slides: syncedSlides,
+    activeSlideIndex: safeIndex,
+    activeSlideId: syncedActive?.id ?? null,
     format,
+    applyFinishToAll,
   });
-  const active = slides[body.activeSlideIndex] ?? slides[0];
-  if (active) loadSlideIntoEditor(active);
+  if (syncedActive) loadSlideIntoEditor(syncedActive);
   useEditor.temporal.getState().clear();
 }
 
@@ -175,12 +275,9 @@ export async function prepareDraftForHomeExport(body: DraftBody): Promise<DraftB
   const available = await getStoredImageIds();
   await loadUserImages(bodyImageIds(body));
   const reconciled = reconcileBodyImages(body, available);
-  applyingState = true;
-  try {
+  withApplyingState(() => {
     applyBodyToStores(reconciled.body);
-  } finally {
-    applyingState = false;
-  }
+  });
   return reconciled.body;
 }
 
@@ -204,8 +301,8 @@ function nextMetaForBody(meta: DraftMeta, body: DraftBody): DraftMeta {
 
 function getChannel(): BroadcastChannel | null {
   if (typeof BroadcastChannel === 'undefined') return null;
-  if (!channel) channel = new BroadcastChannel(CHANNEL_NAME);
-  return channel;
+  if (!session.channel) session.channel = new BroadcastChannel(CHANNEL_NAME);
+  return session.channel;
 }
 
 function broadcastDraftsChanged(): void {
@@ -227,16 +324,16 @@ export function onDraftsChanged(callback: () => void): () => void {
 // ------------------------------------------------------------------ locks
 
 function releaseDraftLock(): void {
-  if (releaseLockFn) {
-    const release = releaseLockFn;
-    releaseLockFn = null;
+  if (session.releaseLockFn) {
+    const release = session.releaseLockFn;
+    session.releaseLockFn = null;
     release();
   }
-  lockedDraftId = null;
+  session.lockedDraftId = null;
 }
 
 async function acquireDraftLock(id: string): Promise<boolean> {
-  if (lockedDraftId === id) return true;
+  if (session.lockedDraftId === id) return true;
   releaseDraftLock();
 
   if (typeof navigator === 'undefined' || !navigator.locks) return true;
@@ -255,10 +352,10 @@ async function acquireDraftLock(id: string): Promise<boolean> {
           settle(false);
           return;
         }
-        lockedDraftId = id;
+        session.lockedDraftId = id;
         settle(true);
         await new Promise<void>((release) => {
-          releaseLockFn = release;
+          session.releaseLockFn = release;
         });
       })
       .catch(() => settle(false));
@@ -267,17 +364,54 @@ async function acquireDraftLock(id: string): Promise<boolean> {
 
 // ------------------------------------------------------------------- saving
 
+function cancelSaveTimer(): void {
+  if (session.saveTimer) {
+    clearTimeout(session.saveTimer);
+    session.saveTimer = null;
+  }
+}
+
+function cancelCoverRefresh(): void {
+  if (session.coverTimer) {
+    clearTimeout(session.coverTimer);
+    session.coverTimer = null;
+  }
+}
+
+function scheduleCoverRefresh(id: string): void {
+  cancelCoverRefresh();
+  session.coverTimer = setTimeout(() => {
+    session.coverTimer = null;
+    if (session.activeId !== id || session.isNewDraft || !session.coverDirty) return;
+    if (useCarousel.getState().isExporting) return;
+    if (useEditor.getState().editingId !== null) {
+      scheduleCoverRefresh(id);
+      return;
+    }
+    void captureAndSaveCover(id, true).then((saved) => {
+      if (saved && session.activeId === id) {
+        session.coverDirty = false;
+        broadcastDraftsChanged();
+      }
+    });
+  }, COVER_REFRESH_DEBOUNCE_MS);
+}
+
 function scheduleSave(delay = SAVE_DEBOUNCE_MS): void {
-  if (saveTimer) clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => {
-    saveTimer = null;
+  cancelSaveTimer();
+  session.saveTimer = setTimeout(() => {
+    session.saveTimer = null;
     void flushDraft();
   }, delay);
 }
 
 export function markDraftDirty(): void {
-  if (applyingState || !activeId) return;
-  dirty = true;
+  ensureActiveSessionRecovered();
+  if (isApplyingState() || !session.activeId) return;
+  if (useCarousel.getState().isExporting) return;
+  session.dirty = true;
+  session.coverDirty = true;
+  session.changeRevision += 1;
   const store = useDraftsStore.getState();
   if (store.saveStatus !== 'saving') {
     store.setSaveState('dirty', null);
@@ -285,66 +419,232 @@ export function markDraftDirty(): void {
   scheduleSave();
 }
 
-async function persistIfDirty(): Promise<void> {
-  if (!activeId || !activeMeta || !dirty) return;
+interface PendingCheckpoint {
+  meta: DraftMeta;
+  body: DraftBody;
+  savedAt: number;
+}
 
-  const id = activeId;
-  const meta = activeMeta;
-  const body = buildBody(id);
+function getStorageSafe(): Storage | null {
+  try {
+    if (typeof window === 'undefined') return null;
+    return window.localStorage ?? null;
+  } catch {
+    return null;
+  }
+}
 
-  if (isNewDraft && !isBodyMeaningful(body)) {
-    dirty = false;
+function writePendingCheckpointSync(meta: DraftMeta, body: DraftBody): void {
+  const storage = getStorageSafe();
+  if (!storage) return;
+  try {
+    const payload: PendingCheckpoint = { meta, body, savedAt: Date.now() };
+    storage.setItem(PENDING_CHECKPOINT_KEY, JSON.stringify(payload));
+  } catch {
+    // Falha em localStorage (cota/modo privado) nunca bloqueia o save principal no IndexedDB.
+  }
+}
+
+function clearPendingCheckpointSync(expectedDraftId?: string): void {
+  const storage = getStorageSafe();
+  if (!storage) return;
+  try {
+    if (!expectedDraftId) {
+      storage.removeItem(PENDING_CHECKPOINT_KEY);
+      return;
+    }
+    const raw = storage.getItem(PENDING_CHECKPOINT_KEY);
+    if (!raw) return;
+    const parsed = JSON.parse(raw) as { meta?: { id?: unknown } } | null;
+    if (parsed?.meta?.id === expectedDraftId) {
+      storage.removeItem(PENDING_CHECKPOINT_KEY);
+    }
+  } catch {
+    try {
+      storage.removeItem(PENDING_CHECKPOINT_KEY);
+    } catch {
+      // Ignora erro ao limpar chave corrompida.
+    }
+  }
+}
+
+async function flushPendingCheckpointToDb(): Promise<void> {
+  const storage = getStorageSafe();
+  if (!storage) return;
+  let raw: string | null = null;
+  try {
+    raw = storage.getItem(PENDING_CHECKPOINT_KEY);
+  } catch {
+    return;
+  }
+  if (!raw) return;
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    clearPendingCheckpointSync();
     return;
   }
 
-  dirty = false;
+  const candidate = parsed as { meta?: unknown; body?: unknown } | null;
+  const meta = sanitizeDraftMeta(candidate?.meta);
+  const body = sanitizeDraftBody(candidate?.body, meta?.format);
+  if (!meta || !body || meta.id !== body.id) {
+    clearPendingCheckpointSync();
+    return;
+  }
+
+  try {
+    const existing = await readDraftRecord(meta.id);
+    if (!existing || meta.updatedAt >= existing.meta.updatedAt) {
+      await saveDraftRecord(meta, body);
+    }
+    clearPendingCheckpointSync(meta.id);
+  } catch {
+    // Mantém o checkpoint pendente para tentar novamente na próxima abertura/boot.
+  }
+}
+
+function snapshotOnPageExitSync(): void {
+  ensureActiveSessionRecovered();
+  if (!session.activeId || !session.activeMeta) return;
+  if (useCarousel.getState().isExporting) return;
+
+  flushTextEditing();
+  syncEditorToCarouselIfNeeded();
+
+  if (!session.dirty && !session.savingInFlight) return;
+
+  const id = session.activeId;
+  const body = buildBody(id);
+  if (session.isNewDraft && !isBodyMeaningful(body)) return;
+
+  const nextMeta = nextMetaForBody(session.activeMeta, body);
+  writePendingCheckpointSync(nextMeta, body);
+
+  if (session.savingInFlight && !session.dirty) {
+    // Se uma transação IndexedDB já estava em voo quando o unload começou,
+    // dispara também uma gravação síncrona imediata como defesa extra além do checkpoint.
+    void saveDraftRecord(nextMeta, body).catch(() => undefined);
+  }
+}
+
+async function persistIfDirty(): Promise<void> {
+  ensureActiveSessionRecovered();
+  if (!session.activeId || !session.activeMeta || !session.dirty) return;
+  if (useCarousel.getState().isExporting) return;
+
+  const id = session.activeId;
+  const meta = session.activeMeta;
+  const savedRevision = session.changeRevision;
+  const body = buildBody(id);
+
+  if (session.isNewDraft && !isBodyMeaningful(body)) {
+    if (session.changeRevision <= savedRevision) {
+      session.dirty = false;
+      session.coverDirty = false;
+    }
+    return;
+  }
+
+  session.dirty = false;
+  session.activeSaves += 1;
+  session.savingInFlight = true;
   useDraftsStore.getState().setSaveState('saving', null);
 
   try {
     const nextMeta = nextMetaForBody(meta, body);
+    writePendingCheckpointSync(nextMeta, body);
     await saveDraftRecord(nextMeta, body);
-    if (activeId !== id) return;
+    if (session.activeId !== id) return;
 
-    activeMeta = nextMeta;
-    isNewDraft = false;
-    useDraftsStore.getState().updateActiveMeta(nextMeta);
-    useDraftsStore.getState().setSaveState('saved', null);
+    if (savedRevision >= session.latestSavedRevision) {
+      session.latestSavedRevision = savedRevision;
+      session.activeMeta = nextMeta;
+      session.isNewDraft = false;
+      useDraftsStore.getState().updateActiveMeta(nextMeta);
+    }
     broadcastDraftsChanged();
-    // Capa é cosmética: fora da cadeia de erro do save e sem await, para não
-    // atrasar o "Salvo". Garante que um reload antes de voltar pra home já
-    // encontre uma capa gravada.
-    void ensureCover(id);
+
+    if (session.dirty || session.changeRevision > session.latestSavedRevision) {
+      session.dirty = true;
+      useDraftsStore.getState().setSaveState('dirty', null);
+      scheduleSave(SAVE_DEBOUNCE_MS);
+    } else {
+      clearPendingCheckpointSync(id);
+      useDraftsStore.getState().setSaveState('saved', null);
+      if (session.coverDirty) {
+        scheduleCoverRefresh(id);
+      } else {
+        void ensureCover(id);
+      }
+    }
   } catch (error) {
-    dirty = true;
+    session.dirty = true;
     const message = describeStorageError(error);
     useDraftsStore.getState().setSaveState('error', message);
     useDraftsStore.getState().setStorageWarning(message);
+  } finally {
+    session.activeSaves = Math.max(0, session.activeSaves - 1);
+    session.savingInFlight = session.activeSaves > 0;
   }
 }
 
 /** Serializa os saves: um por vez, sempre com o snapshot mais recente. */
-export function flushDraft(): Promise<void> {
-  if (saveTimer) {
-    clearTimeout(saveTimer);
-    saveTimer = null;
+export function flushDraft(forceSyncOnExit = false): Promise<void> {
+  ensureActiveSessionRecovered();
+  if (!useCarousel.getState().isExporting) {
+    flushTextEditing();
+    syncEditorToCarouselIfNeeded();
   }
-  saveChain = saveChain.then(persistIfDirty, persistIfDirty);
-  return saveChain;
+  cancelSaveTimer();
+  if (!session.savingInFlight || (forceSyncOnExit && session.dirty)) {
+    // Dispara persistIfDirty no mesmo tick para que beforeunload/pagehide
+    // abram a transação IndexedDB antes de perder o contexto da página.
+    const run = persistIfDirty();
+    session.saveChain = session.saveChain.then(
+      () => run,
+      () => run,
+    );
+    return session.saveChain;
+  }
+  session.saveChain = session.saveChain.then(persistIfDirty, persistIfDirty);
+  return session.saveChain;
 }
 
 /**
- * Saída da página: grava o doc e tenta garantir a capa enquanto o canvas ainda
- * está montado. Em `beforeunload` o trabalho assíncrono é best-effort (o timer
- * da captura pode não disparar) — por isso a home também é segura SEM capa.
+ * Saída da página: grava o checkpoint síncrono, persiste o doc no IndexedDB e
+ * tenta atualizar/garantir a capa enquanto o canvas ainda está montado. Em
+ * `beforeunload` o trabalho assíncrono pode ser abortado pelo navegador — por isso
+ * o checkpoint síncrono garante recuperação no próximo boot e a home é segura SEM capa.
  */
-async function flushSession(): Promise<void> {
-  await flushDraft();
-  if (activeId) await ensureCover(activeId);
+async function flushSession(options: { fromBlur?: boolean } = {}): Promise<void> {
+  try {
+    snapshotOnPageExitSync();
+    await flushDraft(!options.fromBlur);
+    const id = session.activeId;
+    if (!id || session.isNewDraft) return;
+    const isEditingText = useEditor.getState().editingId !== null;
+    if (options.fromBlur && isEditingText) return;
+    if (session.coverDirty) {
+      const captured = await captureAndSaveCover(id, true);
+      if (captured && session.activeId === id) {
+        session.coverDirty = false;
+      }
+    } else {
+      await ensureCover(id);
+    }
+  } catch {
+    // Eventos de saída/blur não propagam erro não tratado ao navegador.
+  }
 }
 
 export function retrySave(): void {
-  if (!activeId) return;
-  dirty = true;
+  ensureActiveSessionRecovered();
+  if (!session.activeId) return;
+  session.dirty = true;
+  session.changeRevision += 1;
   useDraftsStore.getState().setSaveState('dirty', null);
   void flushDraft();
 }
@@ -392,6 +692,7 @@ export async function refreshDrafts(options: { silent?: boolean } = {}): Promise
 export async function bootDrafts(): Promise<void> {
   try {
     await migrateLegacyDrafts();
+    await flushPendingCheckpointToDb();
 
     const records = await getAllDraftRecords();
 
@@ -419,7 +720,7 @@ export async function bootDrafts(): Promise<void> {
 // --------------------------------------------------------------- open/create
 
 export async function openDraft(id: string): Promise<boolean> {
-  if (activeId === id && useDraftsStore.getState().screen === 'editor') return true;
+  if (session.activeId === id && useDraftsStore.getState().screen === 'editor') return true;
 
   const locked = await acquireDraftLock(id);
   if (!locked) {
@@ -430,6 +731,7 @@ export async function openDraft(id: string): Promise<boolean> {
   }
 
   try {
+    await flushPendingCheckpointToDb();
     const record = await readDraftRecord(id);
     if (!record) {
       releaseDraftLock();
@@ -441,21 +743,44 @@ export async function openDraft(id: string): Promise<boolean> {
     await loadUserImages(bodyImageIds(record.body));
     const reconciled = reconcileBodyImages(record.body, available);
 
-    applyingState = true;
-    try {
+    cancelSaveTimer();
+    cancelCoverRefresh();
+
+    const openedAt = Date.now();
+    const openedMeta: DraftMeta = { ...record.meta, lastOpenedAt: openedAt };
+
+    withApplyingState(() => {
       applyBodyToStores(reconciled.body);
-    } finally {
-      applyingState = false;
-    }
+    });
 
-    activeId = id;
-    activeMeta = record.meta;
-    isNewDraft = false;
-    dirty = false;
+    session.activeId = id;
+    session.activeMeta = openedMeta;
+    session.isNewDraft = false;
+    session.dirty = false;
+    session.coverDirty = false;
+    session.changeRevision = 0;
+    session.latestSavedRevision = 0;
+    session.activeSaves = 0;
 
-    useDraftsStore.getState().beginActiveDraft(record.meta);
+    useDraftsStore.getState().beginActiveDraft(openedMeta);
     useDraftsStore.getState().setSaveState('saved', null);
     useDraftsStore.getState().setScreen('editor');
+
+    const touchOpened = async (): Promise<void> => {
+      if (session.activeId !== id || !session.activeMeta) return;
+      if (session.dirty) return;
+      try {
+        const updated = await updateDraftMeta(id, { lastOpenedAt: openedAt });
+        if (updated && session.activeId === id && session.activeMeta) {
+          session.activeMeta = { ...session.activeMeta, lastOpenedAt: updated.lastOpenedAt };
+          useDraftsStore.getState().updateActiveMeta(session.activeMeta);
+        }
+        broadcastDraftsChanged();
+      } catch {
+        // Atualização cosmética do card "Continuar": falha não impede a edição.
+      }
+    };
+    session.saveChain = session.saveChain.then(touchOpened, touchOpened);
 
     if (reconciled.removed > 0) {
       const plural = reconciled.removed === 1 ? 'foto saiu' : 'fotos saíram';
@@ -473,6 +798,8 @@ export async function openDraft(id: string): Promise<boolean> {
 }
 
 export function createDraft(kind: DraftKind, format: PostFormat = '3:4'): void {
+  cancelSaveTimer();
+  cancelCoverRefresh();
   releaseDraftLock();
 
   const id = newDraftId();
@@ -487,48 +814,46 @@ export function createDraft(kind: DraftKind, format: PostFormat = '3:4'): void {
     slideCount: 1,
     createdAt: now,
     updatedAt: now,
-    lastOpenedAt: null,
+    lastOpenedAt: now,
     schemaVersion: DRAFT_SCHEMA_VERSION,
   };
 
-  applyingState = true;
-  try {
+  withApplyingState(() => {
     if (kind === 'carousel') {
       const slide = defaultSlide(safeFormat);
       useCarousel.setState({
         mode: 'carousel',
         slides: [slide],
         activeSlideIndex: 0,
+        activeSlideId: slide.id,
         format: safeFormat,
+        applyFinishToAll: true,
       });
       loadSlideIntoEditor(slide);
     } else {
       const doc = { ...emptyDoc(), format: safeFormat };
       const finish = defaultFinish();
+      const singleSlide = { id: newSlideId(), doc, finish };
       useCarousel.setState({
         mode: 'single',
-        slides: [{ id: newSlideId(), doc, finish }],
+        slides: [singleSlide],
         activeSlideIndex: 0,
+        activeSlideId: singleSlide.id,
         format: safeFormat,
+        applyFinishToAll: true,
       });
-      useEditor.setState({
-        doc,
-        finish,
-        step: 0,
-        selectedIds: [],
-        selectedId: null,
-        editingId: null,
-      });
-      useEditor.temporal.getState().clear();
+      resetEditorFor(doc, finish);
     }
-  } finally {
-    applyingState = false;
-  }
+  });
 
-  activeId = id;
-  activeMeta = meta;
-  isNewDraft = true;
-  dirty = false;
+  session.activeId = id;
+  session.activeMeta = meta;
+  session.isNewDraft = true;
+  session.dirty = false;
+  session.coverDirty = false;
+  session.changeRevision = 0;
+  session.latestSavedRevision = 0;
+  session.activeSaves = 0;
 
   useDraftsStore.getState().beginActiveDraft(meta);
   useDraftsStore.getState().setScreen('editor');
@@ -536,18 +861,21 @@ export function createDraft(kind: DraftKind, format: PostFormat = '3:4'): void {
 }
 
 export async function closeDraftToHome(): Promise<void> {
-  if (!activeId) {
+  ensureActiveSessionRecovered();
+  cancelCoverRefresh();
+
+  if (!session.activeId) {
     useDraftsStore.getState().setScreen('home');
     return;
   }
 
-  const id = activeId;
+  const id = session.activeId;
 
   // Se um save terminou bem, `isNewDraft` vira false. Quando um post recém-
   // criado ainda não tem conteúdo, ele é descartado (não aparece vazio na home).
   await flushDraft();
 
-  if (isNewDraft) {
+  if (session.isNewDraft) {
     const body = buildBody(id);
     if (isBodyMeaningful(body)) {
       useEditor
@@ -555,25 +883,38 @@ export async function closeDraftToHome(): Promise<void> {
         .showToast('error', 'Não conseguimos salvar este post. Ele continua aberto para você tentar de novo.');
       return;
     }
+    clearPendingCheckpointSync(id);
   }
 
-  if (!isNewDraft) {
+  if (!session.isNewDraft) {
+    if (!session.dirty && !session.savingInFlight) {
+      clearPendingCheckpointSync(id);
+    }
     try {
-      await captureAndSaveCover(id, true);
+      const saved = await captureAndSaveCover(id, true);
+      if (saved) session.coverDirty = false;
     } catch {
       // A capa é cosmética; o post salvo continua íntegro.
     }
   }
 
   releaseDraftLock();
-  activeId = null;
-  activeMeta = null;
-  isNewDraft = false;
-  dirty = false;
+  cancelSaveTimer();
+  cancelCoverRefresh();
+  session.activeId = null;
+  session.activeMeta = null;
+  session.isNewDraft = false;
+  session.dirty = false;
+  session.coverDirty = false;
+  session.changeRevision = 0;
+  session.latestSavedRevision = 0;
+  session.activeSaves = 0;
 
-  useCarousel.setState({ mode: null });
   useDraftsStore.getState().clearActiveDraft();
   useDraftsStore.getState().setScreen('home');
+  withApplyingState(() => {
+    useCarousel.setState({ mode: null, activeSlideId: null });
+  });
 
   await refreshDrafts({ silent: true });
   broadcastDraftsChanged();
@@ -582,48 +923,73 @@ export async function closeDraftToHome(): Promise<void> {
 // ------------------------------------------------------------------ actions
 
 export async function renameActiveDraft(title: string): Promise<boolean> {
-  if (!activeId || !activeMeta) return false;
+  ensureActiveSessionRecovered();
+  if (!session.activeId || !session.activeMeta) return false;
   const clean = title.replace(/\s+/g, ' ').trim().slice(0, 80);
-  if (!clean || clean === activeMeta.title) return false;
+  if (!clean || clean === session.activeMeta.title) return false;
 
-  const id = activeId;
-  const body = buildBody(id);
-  const nextMeta: DraftMeta = {
-    ...nextMetaForBody(activeMeta, body),
+  const id = session.activeId;
+  const optimisticMeta: DraftMeta = {
+    ...session.activeMeta,
     title: clean,
     titleSource: 'user',
+    updatedAt: Date.now(),
   };
 
-  activeMeta = nextMeta;
-  isNewDraft = false;
-  dirty = false;
-  if (saveTimer) {
-    clearTimeout(saveTimer);
-    saveTimer = null;
-  }
-  useDraftsStore.getState().updateActiveMeta(nextMeta);
+  session.activeMeta = optimisticMeta;
+  session.isNewDraft = false;
+  cancelSaveTimer();
+  useDraftsStore.getState().updateActiveMeta(optimisticMeta);
   useDraftsStore.getState().setSaveState('saving', null);
 
   const task = async (): Promise<boolean> => {
+    if (session.activeId !== id || !session.activeMeta) return false;
+    const savedRevision = session.changeRevision;
+    const body = buildBody(id);
+    const nextMeta: DraftMeta = {
+      ...nextMetaForBody(session.activeMeta, body),
+      title: clean,
+      titleSource: 'user',
+    };
+    session.dirty = false;
+    session.activeSaves += 1;
+    session.savingInFlight = true;
     try {
+      writePendingCheckpointSync(nextMeta, body);
       await saveDraftRecord(nextMeta, body);
-      if (activeId !== id) return false;
-      useDraftsStore.getState().setSaveState('saved', null);
+      if (session.activeId !== id) return false;
+      if (savedRevision >= session.latestSavedRevision) {
+        session.latestSavedRevision = savedRevision;
+        session.activeMeta = nextMeta;
+        useDraftsStore.getState().updateActiveMeta(nextMeta);
+      }
       broadcastDraftsChanged();
-      void ensureCover(id);
+      if (session.dirty || session.changeRevision > session.latestSavedRevision) {
+        session.dirty = true;
+        useDraftsStore.getState().setSaveState('dirty', null);
+        scheduleSave(SAVE_DEBOUNCE_MS);
+      } else {
+        clearPendingCheckpointSync(id);
+        useDraftsStore.getState().setSaveState('saved', null);
+        if (session.coverDirty) scheduleCoverRefresh(id);
+        else void ensureCover(id);
+      }
       return true;
     } catch (error) {
-      dirty = true;
+      session.dirty = true;
       const message = describeStorageError(error);
       useDraftsStore.getState().setSaveState('error', message);
       useDraftsStore.getState().setStorageWarning(message);
       useEditor.getState().showToast('error', message);
       return false;
+    } finally {
+      session.activeSaves = Math.max(0, session.activeSaves - 1);
+      session.savingInFlight = session.activeSaves > 0;
     }
   };
 
-  const resultPromise = saveChain.then(task, task);
-  saveChain = resultPromise.then(
+  const resultPromise = session.saveChain.then(task, task);
+  session.saveChain = resultPromise.then(
     () => undefined,
     () => undefined,
   );
@@ -636,6 +1002,7 @@ export async function renameDraftFromHome(meta: DraftMeta, title: string): Promi
   try {
     const updated = await updateDraftMeta(meta.id, { title: clean, titleSource: 'user' });
     if (!updated) return false;
+    clearPendingCheckpointSync(meta.id);
     await refreshDrafts({ silent: true });
     broadcastDraftsChanged();
     return true;
@@ -695,6 +1062,7 @@ export async function deleteDraftWithUndo(meta: DraftMeta): Promise<void> {
     }
 
     await deleteDraftRecord(meta.id);
+    clearPendingCheckpointSync(meta.id);
     await refreshDrafts({ silent: true });
     broadcastDraftsChanged();
 
@@ -721,18 +1089,17 @@ export async function deleteDraftWithUndo(meta: DraftMeta): Promise<void> {
 export function convertActiveCarouselToSingle(index: number | null): void {
   if (useCarousel.getState().mode !== 'carousel') return;
 
-  const { slides, format, activeSlideIndex } = useCarousel.getState();
+  const { slides, format, activeSlideIndex, applyFinishToAll } = useCarousel.getState();
   const chosen = index === null ? null : extractSingleSlideData(slides, index, format);
   if (index !== null && !chosen) return;
 
-  const snapshot = { slides, format, activeSlideIndex };
+  const snapshot = { slides, format, activeSlideIndex, applyFinishToAll };
   const doc = chosen
     ? { ...chosen.doc, format }
     : { ...emptyDoc(), format };
   const finish = chosen ? chosen.finish : defaultFinish();
 
-  applyingState = true;
-  try {
+  withApplyingState(() => {
     const slide = {
       id: newSlideId(),
       doc,
@@ -742,20 +1109,12 @@ export function convertActiveCarouselToSingle(index: number | null): void {
       mode: 'single',
       slides: [slide],
       activeSlideIndex: 0,
+      activeSlideId: slide.id,
       format,
+      applyFinishToAll: true,
     });
-    useEditor.setState({
-      doc: slide.doc,
-      finish: slide.finish,
-      step: 0,
-      selectedIds: [],
-      selectedId: null,
-      editingId: null,
-    });
-    useEditor.temporal.getState().clear();
-  } finally {
-    applyingState = false;
-  }
+    resetEditorFor(slide.doc, slide.finish);
+  });
 
   useDraftsStore.getState().setActiveKind('single');
   markDraftDirty();
@@ -765,20 +1124,19 @@ export function convertActiveCarouselToSingle(index: number | null): void {
     duration: 8000,
     actionLabel: 'Desfazer',
     onAction: () => {
-      applyingState = true;
-      try {
+      withApplyingState(() => {
+        const active = snapshot.slides[snapshot.activeSlideIndex] ?? snapshot.slides[0];
         useCarousel.setState({
           mode: 'carousel',
           slides: snapshot.slides,
           activeSlideIndex: snapshot.activeSlideIndex,
+          activeSlideId: active?.id ?? null,
           format: snapshot.format,
+          applyFinishToAll: snapshot.applyFinishToAll ?? true,
         });
-        const active = snapshot.slides[snapshot.activeSlideIndex] ?? snapshot.slides[0];
         if (active) loadSlideIntoEditor(active);
         useEditor.temporal.getState().clear();
-      } finally {
-        applyingState = false;
-      }
+      });
       useDraftsStore.getState().setActiveKind('carousel');
       markDraftDirty();
       void flushDraft();
@@ -788,36 +1146,115 @@ export function convertActiveCarouselToSingle(index: number | null): void {
 
 // ------------------------------------------------------------- subscriptions
 
-export function installDraftSession(): void {
-  if (installed) return;
-  installed = true;
+export function resetDraftSessionForTests(): void {
+  cancelSaveTimer();
+  cancelCoverRefresh();
+  releaseDraftLock();
+  if (session.disposeSubscribers) {
+    session.disposeSubscribers();
+    session.disposeSubscribers = null;
+  }
+  session.activeId = null;
+  session.activeMeta = null;
+  session.isNewDraft = false;
+  session.dirty = false;
+  session.coverDirty = false;
+  session.changeRevision = 0;
+  session.latestSavedRevision = 0;
+  session.activeSaves = 0;
+  session.savingInFlight = false;
+  session.saveChain = Promise.resolve();
+  session.installed = false;
+  clearPendingCheckpointSync();
+}
 
-  useEditor.subscribe((state, prev) => {
+export function installDraftSession(): () => void {
+  if (session.disposeSubscribers) {
+    session.disposeSubscribers();
+    session.disposeSubscribers = null;
+  }
+  session.installed = true;
+
+  const unsubEditor = useEditor.subscribe((state, prev) => {
+    if (useCarousel.getState().isExporting) return;
     if (state.doc !== prev.doc || state.finish !== prev.finish) markDraftDirty();
   });
 
-  useCarousel.subscribe((state, prev) => {
-    if (state.slides !== prev.slides || state.format !== prev.format) markDraftDirty();
-    if (state.mode !== prev.mode && activeId) {
+  const unsubCarousel = useCarousel.subscribe((state, prev) => {
+    if (state.isExporting) return;
+
+    if (!isApplyingState()) {
+      const slidesChanged =
+        state.slides !== prev.slides ||
+        state.format !== prev.format ||
+        state.applyFinishToAll !== prev.applyFinishToAll;
+      const indexChanged = state.mode === 'carousel' && state.activeSlideIndex !== prev.activeSlideIndex;
+
+      if (slidesChanged || indexChanged) {
+        markDraftDirty();
+
+        const slideOrderChanged =
+          slidesChanged &&
+          state.mode === prev.mode &&
+          (state.slides.length !== prev.slides.length ||
+            state.slides.some((slide, i) => slide.id !== prev.slides[i]?.id));
+        if (slideOrderChanged) {
+          void flushDraft();
+        }
+      }
+    }
+
+    if (state.mode !== prev.mode && session.activeId) {
       const kind: DraftKind | null =
         state.mode === 'carousel' ? 'carousel' : state.mode === 'single' ? 'single' : null;
       useDraftsStore.getState().setActiveKind(kind);
     }
   });
 
+  const handleVisibilityChange = () => {
+    if (document.visibilityState === 'hidden') {
+      void flushSession().catch(() => undefined);
+    }
+  };
+  const handleExit = () => {
+    void flushSession().catch(() => undefined);
+  };
+  const handleBlur = () => {
+    void flushSession({ fromBlur: true }).catch(() => undefined);
+  };
+
   if (typeof document !== 'undefined') {
-    document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'hidden') void flushSession();
-    });
+    document.addEventListener('visibilitychange', handleVisibilityChange);
   }
   if (typeof window !== 'undefined') {
-    window.addEventListener('pagehide', () => {
-      void flushSession();
-    });
-    window.addEventListener('beforeunload', () => {
-      void flushSession();
-    });
+    window.addEventListener('pagehide', handleExit);
+    window.addEventListener('beforeunload', handleExit);
+    window.addEventListener('blur', handleBlur);
   }
+
+  const dispose = () => {
+    unsubEditor();
+    unsubCarousel();
+    if (typeof document !== 'undefined') {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    }
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('pagehide', handleExit);
+      window.removeEventListener('beforeunload', handleExit);
+      window.removeEventListener('blur', handleBlur);
+    }
+    if (session.disposeSubscribers === dispose) {
+      session.disposeSubscribers = null;
+      session.installed = false;
+    }
+  };
+
+  session.disposeSubscribers = dispose;
+  return dispose;
+}
+
+if (typeof import.meta !== 'undefined' && import.meta.hot && session.installed) {
+  installDraftSession();
 }
 
 export function activeDraftKind(): DraftKind {

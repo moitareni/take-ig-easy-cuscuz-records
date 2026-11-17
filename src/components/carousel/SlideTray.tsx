@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronLeft, ChevronRight, Copy, Plus, Trash2 } from 'lucide-react';
+import { Copy, Plus, Trash2 } from 'lucide-react';
 import { CAROUSEL_MAX_SLIDES } from '../../brand/brand';
 import { SlidePreview } from '../../canvas/SlidePreview';
 import { useSlideReorderMotion } from '../../hooks/useSlideReorderMotion';
@@ -8,7 +8,6 @@ import { isSlideEmpty, useCarousel } from '../../store/carouselStore';
 import { useEditor } from '../../store/editorStore';
 import { ConfirmDialog } from '../ConfirmDialog';
 import { Button } from '../ui/Button';
-import { IconButton } from '../ui/IconButton';
 import { SLIDE_PREVIEW_WIDTH, SlideThumb } from './SlideThumb';
 import styles from './SlideTray.module.css';
 
@@ -33,6 +32,7 @@ export const SlideTray: React.FC = () => {
   const floatingRef = useRef<HTMLDivElement | null>(null);
   const ghostRef = useRef<HTMLDivElement | null>(null);
   const badgeRef = useRef<HTMLSpanElement | null>(null);
+  const pendingFocusSlideRef = useRef<number | null>(null);
 
   const {
     activeDrag,
@@ -60,32 +60,76 @@ export const SlideTray: React.FC = () => {
     };
   }, []);
 
+  // Mantém a miniatura ativa visível na tira (especialmente ao criar/duplicar
+  // slide além da largura visível) e transfere o foco para o novo slide.
+  useEffect(() => {
+    const listEl = listRef.current;
+    if (!listEl) return;
+    const activeWrapper = listEl.querySelector<HTMLElement>(
+      `[data-slide-index="${activeSlideIndex}"]`,
+    );
+    if (!activeWrapper) return;
+
+    const listRect = listEl.getBoundingClientRect();
+    if (listRect.width > 0) {
+      const thumbRect = activeWrapper.getBoundingClientRect();
+      const addBtn =
+        activeSlideIndex === slides.length - 1
+          ? listEl.querySelector<HTMLElement>('button[aria-label="Novo slide vazio"]')
+          : null;
+      const addRect = addBtn?.getBoundingClientRect() ?? null;
+      const rightEdge = addRect ? Math.max(thumbRect.right, addRect.right) : thumbRect.right;
+      const pad = 8;
+      const maxRightDelta = thumbRect.left - (listRect.left + pad);
+
+      if (thumbRect.left < listRect.left + pad) {
+        listEl.scrollLeft += thumbRect.left - (listRect.left + pad);
+      } else if (rightEdge > listRect.right - pad) {
+        const needed = rightEdge - (listRect.right - pad);
+        const thumbNeeded = thumbRect.right - (listRect.right - pad);
+        listEl.scrollLeft += needed <= maxRightDelta ? needed : Math.max(0, thumbNeeded);
+      }
+    }
+
+    if (pendingFocusSlideRef.current === activeSlideIndex) {
+      pendingFocusSlideRef.current = null;
+      const thumbBtn = activeWrapper.querySelector<HTMLButtonElement>('button[aria-current="true"]');
+      thumbBtn?.focus({ preventScroll: true });
+    }
+  }, [activeSlideIndex, slides.length]);
+
   const atMaxSlides = slides.length >= CAROUSEL_MAX_SLIDES;
   const atMinSlides = slides.length <= 1;
-  const hasPrev = activeSlideIndex > 0;
-  const hasNext = activeSlideIndex < slides.length - 1;
+  const addAspectClass =
+    format === '4:3'
+      ? styles.addAspect43
+      : format === '1:1'
+        ? styles.addAspect11
+        : styles.addAspect34;
 
   const handleAddSlide = () => {
     if (atMaxSlides) {
-      showToast('info', 'Chegou no limite! Um carrossel pode ter até 10 slides 🎠');
+      showToast('info', 'Máximo de 10 slides atingido!');
       return;
     }
     const willHitMax = slides.length + 1 >= CAROUSEL_MAX_SLIDES;
+    pendingFocusSlideRef.current = slides.length;
     addSlide();
     if (willHitMax) {
-      showToast('info', 'Chegou no limite! Um carrossel pode ter até 10 slides 🎠');
+      showToast('info', 'Máximo de 10 slides atingido!');
     }
   };
 
   const handleDuplicateSlide = () => {
     if (atMaxSlides) {
-      showToast('info', 'Chegou no limite! Um carrossel pode ter até 10 slides 🎠');
+      showToast('info', 'Máximo de 10 slides atingido!');
       return;
     }
     const willHitMax = slides.length + 1 >= CAROUSEL_MAX_SLIDES;
+    pendingFocusSlideRef.current = activeSlideIndex + 1;
     duplicateSlide(activeSlideIndex);
     if (willHitMax) {
-      showToast('info', 'Chegou no limite! Um carrossel pode ter até 10 slides 🎠');
+      showToast('info', 'Máximo de 10 slides atingido!');
     }
   };
 
@@ -120,121 +164,86 @@ export const SlideTray: React.FC = () => {
         className={styles.tray}
         aria-busy={!trayReady}
       >
-        <div className={styles.stripRow}>
-          <IconButton
-            icon={<ChevronLeft size={18} strokeWidth={2.5} />}
-            label="Slide anterior"
-            size="sm"
-            disabled={!trayReady || !hasPrev}
-            onClick={() => setActiveSlide(activeSlideIndex - 1)}
-          />
-
-          <div ref={listRef} className={styles.thumbList}>
-            {activeDrag && (
-              <div
-                ref={ghostRef}
-                className={styles.dropGhost}
-                style={{
-                  width: activeDrag.width,
-                  height: activeDrag.height,
-                }}
-                aria-hidden="true"
-              >
-                {activeDrag.hasCrossoverLeft && (
-                  <span className={`${styles.ghostCrossoverCue} ${styles.ghostCueLeft}`} />
-                )}
-                {activeDrag.hasCrossoverRight && (
-                  <span className={`${styles.ghostCrossoverCue} ${styles.ghostCueRight}`} />
-                )}
-              </div>
-            )}
-
-            {slides.map((slide, index) => (
-              <SlideThumb
-                key={slide.id}
-                slide={slide}
-                prevSlide={slides[index - 1]}
-                nextSlide={slides[index + 1]}
-                index={index}
-                totalSlides={slides.length}
-                format={format}
-                isActive={index === activeSlideIndex}
-                onSelect={setActiveSlide}
-                onRequestRemove={handleRequestRemove}
-                onPointerDownThumb={handleThumbPointerDown}
-                shouldSuppressClick={shouldSuppressClick}
-                disabled={!trayReady}
-              />
-            ))}
-
-            <button
-              type="button"
-              className={styles.addThumbBtn}
-              aria-label="Novo slide vazio"
-              title={
-                atMaxSlides
-                  ? 'Chegou no limite de 10 slides'
-                  : 'Adicionar novo slide vazio'
-              }
-              disabled={!trayReady || atMaxSlides}
-              onClick={handleAddSlide}
+        <div ref={listRef} className={styles.thumbList}>
+          {activeDrag && (
+            <div
+              ref={ghostRef}
+              className={styles.dropGhost}
+              style={{
+                width: activeDrag.width,
+                height: activeDrag.height,
+              }}
+              aria-hidden="true"
             >
-              <Plus size={20} strokeWidth={2.75} />
-            </button>
-          </div>
-
-          <IconButton
-            icon={<ChevronRight size={18} strokeWidth={2.5} />}
-            label="Próximo slide"
-            size="sm"
-            disabled={!trayReady || !hasNext}
-            onClick={() => setActiveSlide(activeSlideIndex + 1)}
-          />
-        </div>
-
-        <div className={styles.controlsRow}>
-          <span className={styles.counter}>
-            Slide {activeSlideIndex + 1} de {slides.length}
-          </span>
-
-          {!trayReady && (
-            <span className={styles.loading} role="status" aria-live="polite">
-              <span className={styles.loadingDot} aria-hidden="true" />
-              Preparando as miniaturas...
-            </span>
+              {activeDrag.hasCrossoverLeft && (
+                <span className={`${styles.ghostCrossoverCue} ${styles.ghostCueLeft}`} />
+              )}
+              {activeDrag.hasCrossoverRight && (
+                <span className={`${styles.ghostCrossoverCue} ${styles.ghostCueRight}`} />
+              )}
+            </div>
           )}
 
-          <div className={styles.actions}>
-            <Button
-              variant="secondary"
-              size="sm"
-              icon={<Plus size={14} strokeWidth={2.5} />}
-              disabled={!trayReady || atMaxSlides}
-              onClick={handleAddSlide}
-            >
-              Novo slide vazio
-            </Button>
+          {slides.map((slide, index) => (
+            <SlideThumb
+              key={slide.id}
+              slide={slide}
+              prevSlide={slides[index - 1]}
+              nextSlide={slides[index + 1]}
+              index={index}
+              totalSlides={slides.length}
+              format={format}
+              isActive={index === activeSlideIndex}
+              onSelect={setActiveSlide}
+              onMoveSlide={reorderSlides}
+              onRequestRemove={handleRequestRemove}
+              onPointerDownThumb={handleThumbPointerDown}
+              shouldSuppressClick={shouldSuppressClick}
+              disabled={!trayReady}
+            />
+          ))}
 
-            <Button
-              variant="secondary"
-              size="sm"
-              icon={<Copy size={14} strokeWidth={2.5} />}
-              disabled={!trayReady || atMaxSlides}
-              onClick={handleDuplicateSlide}
-            >
-              Duplicar slide atual
-            </Button>
+          <button
+            type="button"
+            className={`${styles.addThumbBtn} ${addAspectClass}`}
+            aria-label="Novo slide vazio"
+            title={
+              atMaxSlides ? 'Chegou no limite de 10 slides' : 'Adicionar novo slide vazio'
+            }
+            disabled={!trayReady || atMaxSlides}
+            onClick={handleAddSlide}
+          >
+            <Plus size={20} strokeWidth={2.75} />
+          </button>
+        </div>
 
-            <Button
-              variant="danger"
-              size="sm"
-              icon={<Trash2 size={14} strokeWidth={2.5} />}
-              disabled={!trayReady || atMinSlides}
-              onClick={() => handleRequestRemove(activeSlideIndex)}
-            >
-              Remover slide
-            </Button>
-          </div>
+        {!trayReady && (
+          <span className={styles.loading} role="status" aria-live="polite">
+            <span className={styles.loadingDot} aria-hidden="true" />
+            Preparando as miniaturas...
+          </span>
+        )}
+
+        <div className={styles.actions}>
+          <Button
+            variant="secondary"
+            size="sm"
+            icon={<Copy size={14} strokeWidth={2.5} />}
+            disabled={!trayReady || atMaxSlides}
+            onClick={handleDuplicateSlide}
+          >
+            Duplicar slide atual
+          </Button>
+
+          <Button
+            variant="danger"
+            size="sm"
+            icon={<Trash2 size={14} strokeWidth={2.5} />}
+            disabled={!trayReady || atMinSlides}
+            onClick={() => handleRequestRemove(activeSlideIndex)}
+          >
+            Remover slide
+          </Button>
         </div>
       </nav>
 

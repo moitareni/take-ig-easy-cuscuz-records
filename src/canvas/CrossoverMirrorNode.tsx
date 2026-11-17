@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { Group, Image as KonvaImage, Rect, Text as KonvaText } from 'react-konva';
 import { canvasBlendOf, getDecoration, getLogo, manifest } from '../assets';
-import { BORDERS, BRAND_EFFECT, COLORS } from '../brand/brand';
+import { BORDERS, BRAND_EFFECT, COLORS, getBrandEffectStrokeColor } from '../brand/brand';
 import { measureTextLayout } from '../lib/textLayout';
 import { useFontsReady } from '../lib/useFontsReady';
 import { useImage } from '../lib/useImage';
@@ -198,8 +198,8 @@ const ContinuationText: React.FC<{ element: TextEl; offsetX: number }> = ({
       {element.brandEffect && (
         <KonvaText
           {...textProps}
-          fill={BRAND_EFFECT.strokeColor}
-          stroke={BRAND_EFFECT.strokeColor}
+          fill={getBrandEffectStrokeColor(element.brandEffectColor)}
+          stroke={getBrandEffectStrokeColor(element.brandEffectColor)}
           strokeWidth={BRAND_EFFECT.strokeOutside * 2}
           shadowColor={BRAND_EFFECT.shadowColor}
           shadowOpacity={BRAND_EFFECT.shadowOpacity}
@@ -219,7 +219,7 @@ const ContinuationText: React.FC<{ element: TextEl; offsetX: number }> = ({
  * (anterior com offsetX = -postWidth, ou seguinte com offsetX = +postWidth).
  * Renderizado com opacidade 100% (opacity: 1) e mesma orientação do original.
  */
-export const CrossoverMirrorNode: React.FC<CrossoverMirrorNodeProps> = ({
+const CrossoverMirrorNodeImpl: React.FC<CrossoverMirrorNodeProps> = ({
   element,
   offsetX,
 }) => {
@@ -237,3 +237,5 @@ export const CrossoverMirrorNode: React.FC<CrossoverMirrorNodeProps> = ({
   }
   return null;
 };
+
+export const CrossoverMirrorNode = React.memo(CrossoverMirrorNodeImpl);

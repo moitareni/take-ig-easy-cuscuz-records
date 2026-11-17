@@ -4,6 +4,7 @@ import { getPostDimensions } from '../brand/brand';
 import { formatZoomPercent, zoomStepIn, zoomStepOut } from '../lib/zoom';
 import { useEditor } from '../store/editorStore';
 import { IconButton } from './ui/IconButton';
+import { ToolGroupTitle } from './ui/ToolGroupTitle';
 import styles from './ZoomControls.module.css';
 
 /**
@@ -23,27 +24,30 @@ export const ZoomControls: React.FC = () => {
   const stepTo = (target: number) => setZoom(target / fitScale);
 
   return (
-    <div className={styles.controls} role="group" aria-label="Zoom da folha">
-      <IconButton
-        icon={<Minus size={17} strokeWidth={2.5} />}
-        label="Reduzir zoom (Ctrl+-)"
-        size="sm"
-        onClick={() => stepTo(zoomStepOut(trueScale))}
-      />
-      <button
-        type="button"
-        className={styles.percent}
-        title="Ajustar à tela (Ctrl+0)"
-        onClick={() => setZoom(1)}
-      >
-        {formatZoomPercent(trueScale)}
-      </button>
-      <IconButton
-        icon={<Plus size={17} strokeWidth={2.5} />}
-        label="Ampliar zoom (Ctrl+=)"
-        size="sm"
-        onClick={() => stepTo(zoomStepIn(trueScale))}
-      />
+    <div className={styles.controls}>
+      <ToolGroupTitle label="Zoom" />
+      <div className={styles.row} role="group" aria-label="Zoom da folha">
+        <IconButton
+          icon={<Minus size={17} strokeWidth={2.5} />}
+          label="Reduzir zoom (Ctrl+-)"
+          size="sm"
+          onClick={() => stepTo(zoomStepOut(trueScale))}
+        />
+        <button
+          type="button"
+          className={styles.percent}
+          title="Ajustar à tela (Ctrl+0)"
+          onClick={() => setZoom(1)}
+        >
+          {formatZoomPercent(trueScale)}
+        </button>
+        <IconButton
+          icon={<Plus size={17} strokeWidth={2.5} />}
+          label="Ampliar zoom (Ctrl+=)"
+          size="sm"
+          onClick={() => stepTo(zoomStepIn(trueScale))}
+        />
+      </div>
     </div>
   );
 };

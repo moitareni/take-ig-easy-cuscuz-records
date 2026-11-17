@@ -100,6 +100,36 @@ if (transformerProto.__mirrorPatchVersion !== MIRROR_PATCH_VERSION) {
   transformerProto.__mirrorPatchVersion = MIRROR_PATCH_VERSION;
 }
 
+/**
+ * Reaplica o patch de espelhamento e atualiza a folga de renderização do
+ * Transformer (necessário sob HMR e quando o overlay muda de tamanho).
+ */
+export function applyMirrorTransformerSlack(
+  tr: Konva.Transformer,
+  slackX: number,
+  slackY: number
+): void {
+  const anyTr = tr as unknown as Record<string, unknown>;
+  const baseGetTransform = transformerProto.__mirrorBaseGetTransform;
+  const baseFit = transformerProto.__mirrorBaseFit;
+  if (baseGetTransform) {
+    anyTr.getTransform = function (this: MirrorHost) {
+      return mirrorGetTransform(this, baseGetTransform);
+    };
+  }
+  if (baseFit) {
+    anyTr._fitNodesInto = function (this: MirrorHost, newAttrs: any, evt?: any) {
+      return mirrorFitNodesInto(this, newAttrs, evt, baseFit);
+    };
+  }
+  anyTr.__mirrorPatchVersion = MIRROR_PATCH_VERSION;
+  anyTr._mirrorSlackX = slackX;
+  anyTr._mirrorSlackY = slackY;
+  (tr as unknown as { _resetTransformCache?: () => void })._resetTransformCache?.();
+  tr.update();
+  tr.getLayer()?.batchDraw();
+}
+
 // react-konva instancia hosts via `new Konva[type]` — registra a subclasse
 // para poder usá-la como <MirrorTransformerEl /> no JSX. O comportamento do
 // espelho vive no patch da base acima; a subclasse só troca o proxy de arraste.

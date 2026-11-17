@@ -38,6 +38,7 @@ export interface CarouselDraftBody {
   slides: SlideData[];
   activeSlideIndex: number;
   format: PostFormat;
+  applyFinishToAll?: boolean;
   schemaVersion: typeof DRAFT_SCHEMA_VERSION;
 }
 

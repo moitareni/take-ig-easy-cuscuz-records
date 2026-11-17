@@ -50,6 +50,11 @@
   box-shadow: 0 2px 0 var(--c-border);
 }
 
+.stepButton.active:focus-visible {
+  outline: 3px solid var(--c-preto);
+  box-shadow: 0 0 0 2px var(--c-creme), 0 2px 0 var(--c-border);
+}
+
 .active .label {
   color: var(--c-text-main);
 }

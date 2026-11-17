@@ -122,6 +122,14 @@ export const BRAND_EFFECT = {
   shadowBlur: 4,
 } as const;
 
+/** Opções de cor disponíveis para a borda (traçado) do "Texto com borda". */
+export const TEXT_BORDER_COLORS: readonly BrandColor[] = ['preto', 'barro', 'amarelo', 'verde', 'creme'];
+
+/** Resolve a cor hexadecimal do traçado do "Texto com borda". */
+export function getBrandEffectStrokeColor(color?: BrandColor): string {
+  return (color && COLORS[color]) || BRAND_EFFECT.strokeColor;
+}
+
 export type BorderKind = 'none' | 'yellow' | 'clay';
 
 /** Bordas de destaque (BORDER/README.txt): offset retangular + TEXTURA-BORDA em "luz indireta" (soft-light). */
@@ -191,20 +199,20 @@ export const GUIDE_COLORS = {
 export const FINISH_ENABLED_DEFAULT = false;
 export const PAPER_OPACITY_MIN = 0;
 export const PAPER_OPACITY_MAX = 100;
-export const PAPER_OPACITY_DEFAULT = 40;
+export const PAPER_OPACITY_DEFAULT = 50;
 export const BORDER_TEXTURE_OPACITY_MIN = 0;
 export const BORDER_TEXTURE_OPACITY_MAX = 100;
-export const BORDER_TEXTURE_OPACITY_DEFAULT = 40;
+export const BORDER_TEXTURE_OPACITY_DEFAULT = 10;
 export const GRAIN_INTENSITY_MIN = 0;
 export const GRAIN_INTENSITY_MAX = 100;
-export const GRAIN_INTENSITY_DEFAULT = 50;
+export const GRAIN_INTENSITY_DEFAULT = 60;
 export type GrainSize = 'P' | 'M' | 'G';
 export const GRAIN_SIZES: Record<GrainSize, { label: string; hint: string; patternScale: number }> = {
   P: { label: 'P', hint: 'Grão fino', patternScale: 0.5 },
   M: { label: 'M', hint: 'Grão médio', patternScale: 1 },
   G: { label: 'G', hint: 'Grão grosso', patternScale: 2 },
 };
-export const GRAIN_SIZE_DEFAULT: GrainSize = 'P';
+export const GRAIN_SIZE_DEFAULT: GrainSize = 'M';
 export const GRAIN_TILE_SIZE = 512;
 export const GRAIN_SEED = 20261016;
 export const GRAIN_STDDEV = 30;
