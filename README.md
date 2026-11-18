@@ -38,7 +38,7 @@ Para rodar localmente, basta clicar em ***iniciar.bat***; vai rodar um script co
 
 - **Escolher o fundo** entre os estilos da marca e ajustar o enquadramento.
 - **Colocar enfeites** (flores, folhas, ondas, molduras) e a **logo** da gravadora.
-- **Adicionar suas fotos** — dá pra arrastar pra folha ou colar com `Ctrl + V`.
+- **Adicionar suas fotos**; dá pra arrastar pra folha ou colar com `Ctrl + V`.
 - **Recortar o fundo de uma foto** sem sair do navegador (funciona offline depois da primeira vez).
 - **Escrever títulos e textos** com a fonte e o efeito da marca já aplicados.
 - **Ajustar os acabamentos**: papel amassado, craquelado e granulado.
