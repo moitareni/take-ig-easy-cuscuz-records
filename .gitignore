@@ -7,3 +7,5 @@ playwright-report
 .kiro
 .commandcode
 .freebuff
+tmp/
+.agents
